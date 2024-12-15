@@ -1,0 +1,67 @@
+# Notices for [Drone_Human_Detection]
+
+This project includes third-party software components. The following is a list of these components, along with their respective licenses and copyright notices.
+
+## Component: OpenCV
+- License: BSD 3-Clause License
+- Copyright: © 2000-2024, OpenCV team
+
+## Component: Streamlit
+- License: Apache License 2.0
+- Copyright: © 2019-2024, Streamlit Inc.
+
+## Component: RT-DETR
+- License: Apache License 2.0
+- Copyright: © 2020-2024, lyuwenyu
+
+## Component: PyTorch
+- License: BSD 3-Clause License
+- Copyright: © 2016-2024, PyTorch contributors
+
+## Component: torchvision
+- License: BSD 3-Clause License
+- Copyright: © 2016-2024, PyTorch contributors
+
+## Component: torchaudio
+- License: BSD 3-Clause License
+- Copyright: © 2016-2024, PyTorch contributors
+
+## Component: numpy
+- License: BSD 3-Clause License
+- Copyright: © 2005-2024, NumPy developers
+
+## Component: Pillow
+- License: HPND License
+- Copyright: © 1995-2024, Python Imaging Library (PIL) contributors
+
+## Component: tqdm
+- License: MIT License
+- Copyright: © 2014-2024, tqdm contributors
+
+## Component: PyYAML
+- License: MIT License
+- Copyright: © 2006-2024, Kirill Simonov
+
+## Component: scipy
+- License: BSD 3-Clause License
+- Copyright: © 2001-2024, SciPy developers
+
+## Component: transformers
+- License: Apache License 2.0
+- Copyright: © 2018-2024, Hugging Face Inc.
+
+## Component: onnx
+- License: Apache License 2.0
+- Copyright: © 2017-2024, ONNX contributors
+
+## Component: onnxruntime
+- License: MIT License
+- Copyright: © 2018-2024, Microsoft Corporation
+
+## Component: pycocotools
+- License: BSD 3-Clause License
+- Copyright: © 2014-2024, COCO Consortium
+
+---
+
+This project also includes other open source components. For a complete list of licenses and notices for these components, please refer to the respective documentation and source code repositories.

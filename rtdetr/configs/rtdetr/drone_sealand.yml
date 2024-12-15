@@ -1,0 +1,9 @@
+__include__: [
+  '../dataset/drone_combine.yml',
+  '../runtime.yml',
+  './include/dataloader.yml',
+  './include/optimizer.yml',
+  './include/rtdetr_r50vd.yml',
+]
+
+output_dir: /content/drive/MyDrive/drone_detection/dataset/SARD&SDS/result/training_log

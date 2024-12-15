@@ -1,0 +1,33 @@
+task: detection
+
+num_classes: 1
+remap_mscoco_category: True
+
+train_dataloader: 
+  type: DataLoader
+  dataset: 
+    type: CocoDetection
+    img_folder: /content/drive/MyDrive/drone_detection/dataset/
+    ann_file: /content/drive/MyDrive/drone_detection/dataset/SARDSDS/annotations/train.json
+    transforms:
+      type: Compose
+      ops: ~
+  shuffle: True
+  batch_size: 4
+  num_workers: 4
+  drop_last: True 
+
+val_dataloader:
+  type: DataLoader
+  dataset: 
+    type: CocoDetection
+    img_folder: /content/drive/MyDrive/drone_detection/dataset/
+    ann_file: /content/drive/MyDrive/drone_detection/dataset/SARDSDS/annotations/val.json
+    transforms:
+      type: Compose
+      ops: ~ 
+
+  shuffle: False
+  batch_size: 4
+  num_workers: 4
+  drop_last: False
