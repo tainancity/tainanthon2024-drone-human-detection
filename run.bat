@@ -6,6 +6,7 @@ IF %ERRORLEVEL% NEQ 0 (
 )
 IF %ERRORLEVEL% EQU 0 (
     echo Conda is installed.
+    ECHO [93m && conda env list && ECHO [0m
     set /p "env=Please enter the Conda environment name to activate:"
 )
 IF %env% NEQ "" (
