@@ -45,9 +45,14 @@
 ## 使用方法
 
 1. 啟動 Streamlit 應用：
-
+    使用 v1 模型
     ```bash
     streamlit run main.py --server.maxUploadSize 10000
+    ```
+
+    使用 v2 模型
+    ```bash
+    streamlit run main_v2.py --server.maxUploadSize 10000
     ```
 
 2. 或者 直接執行`run.bat`
