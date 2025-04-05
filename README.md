@@ -45,6 +45,7 @@
 ## 使用方法
 
 1. 啟動 Streamlit 應用：
+   
     使用 v1 模型
     ```bash
     streamlit run main.py --server.maxUploadSize 10000
@@ -55,9 +56,9 @@
     streamlit run main_v2.py --server.maxUploadSize 10000
     ```
 
-2. 或者 直接執行`run.bat`
+3. 或者 直接執行`run.bat`
 
-3. 在瀏覽器中打開 `http://localhost:8501`(如果沒有自動開啟的話)，上傳圖片或影片進行影像辨識。
+4. 在瀏覽器中打開 `http://localhost:8501`(如果沒有自動開啟的話)，上傳圖片或影片進行影像辨識。
 
 ## 專案結構
 
