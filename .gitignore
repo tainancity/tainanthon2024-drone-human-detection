@@ -142,3 +142,4 @@ torchTest.py
 log_files.zip
 output_files.zip
 Drone_Detection.exe
+rtdetrv2/weights/best.pth
