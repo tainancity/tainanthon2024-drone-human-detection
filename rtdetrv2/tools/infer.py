@@ -16,7 +16,7 @@ import cv2
 from tqdm import tqdm
 import time
 import argparse
-def postprocess(labels, boxes, scores, iou_threshold=0.55):
+def postprocess(labels, boxes, scores, iou_threshold=0.50):
     def calculate_iou(box1, box2):
         x1, y1, x2, y2 = box1
         x3, y3, x4, y4 = box2
@@ -79,7 +79,7 @@ def slice_image(image, slice_height, slice_width, overlap_ratio):
             slices.append(slice_img)
             coordinates.append((x, y))
     return slices, coordinates
-def merge_predictions(predictions, slice_coordinates, orig_image_size, slice_width, slice_height, threshold=0.30):
+def merge_predictions(predictions, slice_coordinates, orig_image_size, slice_width, slice_height, threshold=0.50):
     merged_labels = []
     merged_boxes = []
     merged_scores = []
@@ -214,7 +214,7 @@ def Inference(args):
                 output = model(im_data, orig_size)
                 labels, boxes, scores = output
                     
-                detect_frame = draw([im_pil], labels, boxes, scores, 0.35)
+                detect_frame = draw([im_pil], labels, boxes, scores, 0.8)
                 frame_out = cv2.cvtColor(np.array(detect_frame), cv2.COLOR_RGB2BGR)
                 output_video.write(frame_out)
 
@@ -246,16 +246,16 @@ def Inference(args):
         im_data = transforms(im_pil)[None].to(args.device)
         output = model(im_data, orig_size)
         labels, boxes, scores = output
-        detect_frame = draw([im_pil], labels, boxes, scores, 0.35)
+        detect_frame = draw([im_pil], labels, boxes, scores, 0.8)
         frame_out = cv2.cvtColor(np.array(detect_frame), cv2.COLOR_RGB2BGR)
         cv2.imwrite(os.path.join(args.outputdir,f"{video_name}.jpg"),frame_out)
         
 def InitArgs(imfile, video, outputdir, device):
     parser = argparse.ArgumentParser()
-    parser.add_argument('-c', '--config', type=str, default=r"rtdetrv2/configs/rtdetrv2/rtdetrv2_r50vd_6x_coco.yml")
-    parser.add_argument('-r', '--resume', type=str, default=r"rtdetrv2/weights/best.pth")  #要改model暫時先從這裡改
+    parser.add_argument('-c', '--config', type=str, default=r"C:\drone project\tainanthon2024-drone-human-detection\rtdetrv2\configs\rtdetrv2\rtdetrv2_r50vd_6x_coco.yml")
+    parser.add_argument('-r', '--resume', type=str, default=r"C:\drone project\best.pth")  #要改model暫時先從這裡改
     parser.add_argument('-f', '--imfile', type=str, default=imfile)
-    parser.add_argument('-s', '--sliced', type=bool, default=False)
+    parser.add_argument('-s', '--sliced', type=bool, default=True)
     parser.add_argument('-d', '--device', type=str, default=device)
     parser.add_argument('-nc', '--numberofboxes', type=int, default=25)
     parser.add_argument('-o', '--outputdir', type=str, default= outputdir)
@@ -264,16 +264,16 @@ def InitArgs(imfile, video, outputdir, device):
     return args
     
     
-if __name__ == '__main__':
+# if __name__ == '__main__':
     
-    parser = argparse.ArgumentParser()
-    parser.add_argument('-c', '--config', type=str, default=r"rtdetrv2/configs/rtdetrv2/rtdetrv2_r50vd_6x_coco.yml")
-    parser.add_argument('-r', '--resume', type=str, default=r"rtdetrv2/weights/best.pth")
-    parser.add_argument('-f', '--imfile', type=str, default=r"testdata\703134876.184583.mp4")
-    parser.add_argument('-s', '--sliced', type=bool, default=False)
-    parser.add_argument('-d', '--device', type=str, default='cpu')
-    parser.add_argument('-nc', '--numberofboxes', type=int, default=25)
-    parser.add_argument('-o', '--outputdir', type=str, default= r"output")
-    parser.add_argument('-v', '--video', type=bool, default=True)
-    args = parser.parse_args()
-    Inference(args)
+#     parser = argparse.ArgumentParser()
+#     parser.add_argument('-c', '--config', type=str, default=r"C:\drone project\tainanthon2024-drone-human-detection\rtdetrv2\configs\rtdetrv2\rtdetrv2_r50vd_6x_coco.yml")
+#     parser.add_argument('-r', '--resume', type=str, default=r"C:\drone project\checkpoint0036.pth")
+#     parser.add_argument('-f', '--imfile', type=str, default=r"testdata\703134876.184583.mp4")
+#     parser.add_argument('-s', '--sliced', type=bool, default=False)
+#     parser.add_argument('-d', '--device', type=str, default='cpu')
+#     parser.add_argument('-nc', '--numberofboxes', type=int, default=25)
+#     parser.add_argument('-o', '--outputdir', type=str, default= r"output")
+#     parser.add_argument('-v', '--video', type=bool, default=True)
+#     args = parser.parse_args()
+#     Inference(args)
