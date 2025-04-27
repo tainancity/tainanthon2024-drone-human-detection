@@ -13,15 +13,29 @@ import shutil
 import uuid
 from rtdetrv2.tools.infer import InitArgs, draw, initModel
 from anomalyDET import anomaly_main
+import time
+import locale
+import ctypes
+import ffmpegcv
 
 video_format = ['mp4', 'mov', 'avi', 'MP4', 'MOV', 'AVI']
 image_format = ['png', 'jpg', 'jpeg', 'PNG', 'JPG', 'JPEG']
 
+import json
+
+def load_language(lang):
+    try:
+        with open(f"lang/{lang}.json", "r", encoding="utf-8") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return {}
+    
 def main():
-    st.title('無人機人員偵測系統')
+
+    st.title(lang.get("title"))
     
     # upload the file
-    uploaded_files = st.file_uploader('上傳圖片/影像', type=['mp4', 'mov', 'avi', 'png', 'jpg', 'jpeg'], accept_multiple_files=True)
+    uploaded_files = st.file_uploader(lang.get("upload_button"), type=['mp4', 'mov', 'avi', 'png', 'jpg', 'jpeg'], accept_multiple_files=True)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     # device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
     print(f"Using device: {device}")
@@ -50,24 +64,27 @@ def main():
             elif file_extension in image_format:
                 Video_Type.append(False)
             else:
-                st.warning(f"檔案 {file_name} 格式不支援！")
+                st.warning(lang.get("unsupported_format").format(file_name=file_name))
                 continue
 
             if file_name not in st.session_state.last_uploaded_files:
                 st.session_state.detect_annotations[file_name] = None
                 st.session_state.last_uploaded_files.append(file_name)
 
-            upload_success = st.success(f"檔案 {file_name} 已成功上傳！")
+            upload_success = st.success(lang.get("file_uploaded").format(file_name=file_name))
             if file_extension in image_format:
                 st.image(uploaded_file)
             elif file_extension in video_format:
                 st.video(uploaded_file)
             else:
-                st.warning(f"檔案 {file_name} 格式不支援！")
+                st.warning(lang.get("unsupported_format").format(file_name=file_name))
                 continue
 
             # create dir of to save the input file and inference outcome
             base_name = file_name.split('.')[0]
+            if os.path.exists("outputfile") and base_name in os.listdir("outputFile"):
+                st.warning(lang.get("file_name_conflict").format(file_name=file_name))
+                continue
             uuid_name, name_mapping_table = change_name_to_uuid(file_name, name_mapping_table)
 
             if Video_Type[-1]:  # 影片檔
@@ -81,9 +98,8 @@ def main():
                 if Video_Type[-1]:  # 圖片需要輸出目錄
                     os.makedirs(output_dir, exist_ok=True)
             except Exception as e:
-                st.error(f"目錄創建失敗：{e}")
+                st.error(lang.get("dir_creation_failed").format(e=e))
                 continue
-
 
             # copy the video to inputFile
             save_path = os.path.join(input_dir, uuid_name)
@@ -92,17 +108,17 @@ def main():
                     f.write(uploaded_file.getbuffer())
                 fps = cv2.VideoCapture(save_path).get(cv2.CAP_PROP_FPS)
             except Exception as e:
-                st.error(f"文件保存失敗：{e}")
+                st.error(lang.get("file_save_failed").format(e=e))
                 
             # close the success message    
             upload_success.empty()
             
-            save_success = st.success(f"檔案已儲存至 {save_path}")
+            save_success = st.success(lang.get("file_saved").format(save_path=save_path))
             save_success.empty()
         
         # 顯示「開始推理」按鈕
         if st.session_state.infer_correct == False and st.session_state.last_uploaded_files != []:
-            st.session_state.infer_correct = st.button("開始推理")
+            st.session_state.infer_correct = st.button(lang.get("infer_button"))
 
         # Start to inference if not already done
         if st.session_state.infer_correct:
@@ -125,7 +141,7 @@ def main():
                     if file_extension in video_format:
                         st.video(new_output_path)
                         log_path = make_log(st.session_state.detect_annotations[file_name], fps, original_name.split('.')[0])
-                        st.success(f"偵測結果已儲存至 {log_path}")
+                        st.success(lang.get("file_saved").format(save_path=log_path))
             st.session_state.infer_correct = False
             st.session_state.has_infer_result = True
 
@@ -133,15 +149,15 @@ def main():
             # 提供下載壓縮檔案的按鈕
             zip_path = zip_output_files()
             with open(zip_path, "rb") as f:
-                st.download_button('下載所有預測檔案', f, 'output_files.zip')
+                st.download_button(lang.get("download_zip"), f, 'output_files.zip')
             
             # 提供下載log檔案的按鈕
             log_zip_path = zip_log_files()
             with open(log_zip_path, "rb") as f:
-                st.download_button('下載所有log檔案', f, 'log_files.zip')
+                st.download_button(lang.get("download_log"), f, 'log_files.zip')
 
             # 清理掉臨時檔案
-    st.button("清理臨時檔案", on_click=lambda: cleanup_files())
+    st.button(lang.get("cleanup_button"), on_click=lambda: cleanup_files())
 
 #
 #   Zip output files function:
@@ -194,10 +210,10 @@ def cleanup_files():
         shutil.rmtree("log", ignore_errors=True)
         os.remove("output_files.zip")
         os.remove("log_files.zip")
-        st.success("成功清理所有臨時檔案.")
+        st.success(lang.get("clear_success"))
 
     except OSError as e:
-        st.error(f"清除檔案失敗: {e}")
+        st.error(lang.get("clear_fail").format(e=e))
         pass
 
 #
@@ -272,24 +288,25 @@ def infer(args, model, name, format):
     detect_annotation = []
     if st.session_state.infer_correct:
         if args.video: # Add classify video type
-            cap = cv2.VideoCapture(args.imfile)
+            start_time = time.time()
+            cap = ffmpegcv.VideoCaptureNV(args.imfile, resize=(640, 640))
             frame_placeholder = st.empty()
 
             # get the fps, w, h, if the input video
-            fps = int(cap.get(cv2.CAP_PROP_FPS))
-            width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-            height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            fps = cap.fps
+            width = cap.width
+            height = cap.height
             
             # set output video type .mp4
             fourcc = cv2.VideoWriter_fourcc(*'avc1')
             output_video = cv2.VideoWriter(os.path.join(args.outputdir, name+".mp4"), fourcc, fps, (width, height))
             
             # Initialize the progress bar with the total number of frames
-            total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            total_frames = cap.count
             progress_bar = st.progress(0)  # Progress bar initialized at 0%
             
             # Create a button to interrupt the inference
-            interrupt_button = st.button('中斷推理', key=name)
+            interrupt_button = st.button(lang.get("interrupt_inference"), key=name)
             is_interrupted = False
             
             if not cap.isOpened():
@@ -297,6 +314,7 @@ def infer(args, model, name, format):
                 exit()
             # Diplay inference result in real time
             # frame_placeholder = st.empty()
+            current_frame = 0
             while cap.isOpened():
                 
                 ret, frame = cap.read()
@@ -306,7 +324,7 @@ def infer(args, model, name, format):
                 if interrupt_button:
                     st.session_state.infer_correct = False
                     is_interrupted = True
-                    st.warning("推理已中斷！")
+                    st.warning(lang.get("inference_stopped"))
                     break  # Break the loop to stop the inference
                     
                 # change the graph type from bgr to rgb 
@@ -315,8 +333,7 @@ def infer(args, model, name, format):
                 orig_size = torch.tensor([w, h])[None].to(args.device)
             
                 # Resize the graph and change to tensor type to inference
-                transforms = T.Compose([
-                    T.Resize((640, 640)),  
+                transforms = T.Compose([  
                     T.ToTensor(),
                 ])
                 im_data = transforms(im_pil)[None].to(args.device)
@@ -333,15 +350,14 @@ def infer(args, model, name, format):
                 frame_display = cv2.resize(frame_out, (800, 600))
                 frame_rgb = cv2.cvtColor(frame_display, cv2.COLOR_BGR2RGB)
                 frame_pil = Image.fromarray(frame_rgb)
-                frame_placeholder.image(frame_pil, caption="即時推論結果", use_container_width=True)
+                frame_placeholder.image(frame_pil, caption=lang.get("on_time_infer_result"), use_container_width=True)
 
-                
                 output_video.write(frame_out)
                 
                 # Update the progress bar
-                current_frame = int(cap.get(cv2.CAP_PROP_POS_FRAMES))
+                current_frame += 1
                 progress = current_frame / total_frames
-                progress_bar.progress(progress)  # Update progress bar
+                progress_bar.progress(progress, text=("%.2f" % round(100*current_frame/total_frames, 2) + "%"))  # Update progress bar
                 print(f"Progress: {current_frame} / {total_frames}")
 
                 # Collect the frame that is detected
@@ -349,8 +365,12 @@ def infer(args, model, name, format):
                     detect_annotation.append(current_frame)
             cap.release()
             output_video.release()
+            end_time = time.time()
+            elapsed_time = end_time - start_time
+            st.info(lang.get("fps").format(fps=round(total_frames/elapsed_time, 2)) + ", " + lang.get("inference_time").format(elapsed_time=round(elapsed_time, 2)))
 
         else:
+            start_time = time.time()
             is_interrupted = False
             img = cv2.imread(os.path.join(args.imfile))
             photo_name = args.imfile.split('.')[0].split('/')[-1]
@@ -373,16 +393,18 @@ def infer(args, model, name, format):
             frame_out = cv2.cvtColor(np.array(detect_frame), cv2.COLOR_RGB2BGR)
             cv2.imwrite(os.path.join(new_path,f"{photo_name}.{format}"),frame_out)
             st.image(frame_out, channels="BGR")
+            end_time = time.time()
+            elapsed_time = end_time - start_time
+            st.info(lang.get("inference_time").format(elapsed_time=round(elapsed_time, 2)))
 
         # close all the windows
         # cv2.destroyAllWindows()
         if is_interrupted:
-            st.info("推理過程已停止。")
+            st.info(lang.get("inference_stopped"))
         else:
-            st.success("推理完成")
+            st.success(lang.get("inference_completed"))
         return detect_annotation
 
-#
 #   Make log function:
 #       parameters:
 #           detect_annotation: the frame number that is detected
@@ -396,16 +418,23 @@ def make_log(detect_annotation, fps, file_name):
     os.makedirs("log", exist_ok=True)
     log_path = os.path.join("log", file_name + '.txt')
     with open(log_path, 'w') as f:
-        f.write("偵測到的人員在以下秒數：\n")
+        f.write(lang.get("detected_people"))
         for i in detect_annotation:
-            f.write(f"{i/fps:.2f}秒\n")
+            f.write(f"{i/fps:.2f}sec\n")
             
     return log_path
 
 if __name__ == '__main__':
-    st.sidebar.title('選用預測方法')
-    page = st.sidebar.selectbox("選擇預測方法", ("模型偵測系統", "異常偵測系統"))
-    if page == "模型偵測系統":
+    # Select language
+    windll = ctypes.windll.kernel32
+    local_lang = locale.windows_locale[ windll.GetUserDefaultUILanguage() ]
+    lang_dicts = {"zh_TW": 0 , "en_US": 1}
+
+    selected_language = st.sidebar.selectbox("Select Language", ["zh", "en"], index=lang_dicts.get(local_lang, 1))
+    lang = load_language(selected_language)
+    st.sidebar.title(lang.get("sidebar_title"))
+    page = st.sidebar.selectbox(lang.get("choose_method"), (lang.get("model_system"), lang.get("anomaly_system")))
+    if page == "模型偵測系統" or page == "Model System":
         main()
     else:
         anomaly_main()
