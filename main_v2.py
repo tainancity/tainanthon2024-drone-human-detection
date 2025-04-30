@@ -37,8 +37,6 @@ def main():
     # upload the file
     uploaded_files = st.file_uploader(lang.get("upload_button"), type=['mp4', 'mov', 'avi', 'png', 'jpg', 'jpeg'], accept_multiple_files=True)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    # device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
-    print(f"Using device: {device}")
     Video_Type = []
     if uploaded_files is not None:
         # 重置 session state 變數
