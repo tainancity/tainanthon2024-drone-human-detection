@@ -253,11 +253,11 @@ def Inference(args):
 def InitArgs(imfile, video, outputdir, device):
     parser = argparse.ArgumentParser()
     parser.add_argument('-c', '--config', type=str, default=r"D:\Drone_humen_detect\tainanthon2024-drone-human-detection\rtdetrv2\configs\rtdetrv2\rtdetrv2_r50vd_6x_coco.yml")
-    parser.add_argument('-r', '--resume', type=str, default=r"D:\Drone_humen_detect\tainanthon2024-drone-human-detection\checkpoint0059.pth")  #要改model暫時先從這裡改
+    parser.add_argument('-r', '--resume', type=str, default=r"D:\Drone_humen_detect\R50_att_C5_best.pth")  #要改model暫時先從這裡改
     parser.add_argument('-f', '--imfile', type=str, default=imfile)
-    parser.add_argument('-s', '--sliced', type=bool, default=False)
+    parser.add_argument('-s', '--sliced', type=bool, default=True)
     parser.add_argument('-d', '--device', type=str, default=device)
-    parser.add_argument('-nc', '--numberofboxes', type=int, default=25)
+    parser.add_argument('-nc', '--numberofboxes', type=int, default=1)
     parser.add_argument('-o', '--outputdir', type=str, default= outputdir)
     parser.add_argument('-v', '--video', type=bool, default=video)
     args = parser.parse_args()

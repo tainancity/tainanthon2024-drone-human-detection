@@ -57,7 +57,7 @@ RTDETRTransformerv2:
   label_noise_ratio: 0.5
   box_noise_scale: 1.0 # 1.0 0.4
 
-  eval_idx: -1
+  eval_idx: -2
 
   # NEW
   num_points: [4, 4, 4] # [3,3,3] [2,2,2]

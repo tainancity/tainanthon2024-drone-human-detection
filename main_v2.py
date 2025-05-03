@@ -50,7 +50,10 @@ def main():
             st.session_state.has_infer_result = False
         if 'name_mapping_table' not in st.session_state:
             st.session_state.name_mapping_table = []
+        if 'completed_files' not in st.session_state:
+            st.session_state.completed_files = []
         name_mapping_table = st.session_state.name_mapping_table
+        completed_files = st.session_state.completed_files
 
         for uploaded_file in uploaded_files:
             file_name = uploaded_file.name
@@ -137,11 +140,18 @@ def main():
                     st.session_state.detect_annotations[file_name] = infer(args, model, base_name, file_extension)
                     original_name, new_output_path = recover_name(uuid_name, name_mapping_table, file_type)
                     if file_extension in video_format:
-                        st.video(new_output_path)
                         log_path = make_log(st.session_state.detect_annotations[file_name], fps, original_name.split('.')[0])
+                        st.session_state.completed_files.append(new_output_path)
+                        print(new_output_path)
+                        print(st.session_state.completed_files)
                         st.success(lang.get("file_saved").format(save_path=log_path))
             st.session_state.infer_correct = False
             st.session_state.has_infer_result = True
+
+        if st.session_state.has_infer_result:
+            print(st.session_state.completed_files)
+            for i, file_name in enumerate(completed_files):
+                st.video(file_name)
 
         if st.session_state.has_infer_result:
             # 提供下載壓縮檔案的按鈕
@@ -287,7 +297,7 @@ def infer(args, model, name, format):
     if st.session_state.infer_correct:
         if args.video: # Add classify video type
             start_time = time.time()
-            cap = ffmpegcv.VideoCaptureNV(args.imfile, resize=(640, 640))
+            cap = ffmpegcv.VideoCaptureNV(args.imfile)
             frame_placeholder = st.empty()
 
             # get the fps, w, h, if the input video
@@ -333,6 +343,7 @@ def infer(args, model, name, format):
                 # Resize the graph and change to tensor type to inference
                 transforms = T.Compose([  
                     T.ToTensor(),
+                    T.Resize((640, 640)),
                 ])
                 im_data = transforms(im_pil)[None].to(args.device)
                     
@@ -345,7 +356,7 @@ def infer(args, model, name, format):
                 # cv2.imshow("Real time Inference", cv2.resize(frame_out, (800, 600)))
                 # cv2.waitKey(1)
                 # 用 Streamlit 實時顯示推論結果
-                frame_display = cv2.resize(frame_out, (800, 600))
+                frame_display = cv2.resize(frame_out, (800, 600),  interpolation=cv2.INTER_LINEAR)
                 frame_rgb = cv2.cvtColor(frame_display, cv2.COLOR_BGR2RGB)
                 frame_pil = Image.fromarray(frame_rgb)
                 frame_placeholder.image(frame_pil, caption=lang.get("on_time_infer_result"), use_container_width=True)
