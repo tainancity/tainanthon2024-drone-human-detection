@@ -263,17 +263,3 @@ def InitArgs(imfile, video, outputdir, device):
     args = parser.parse_args()
     return args
     
-    
-# if __name__ == '__main__':
-    
-#     parser = argparse.ArgumentParser()
-#     parser.add_argument('-c', '--config', type=str, default=r"C:\drone project\tainanthon2024-drone-human-detection\rtdetrv2\configs\rtdetrv2\rtdetrv2_r50vd_6x_coco.yml")
-#     parser.add_argument('-r', '--resume', type=str, default=r"C:\drone project\checkpoint0036.pth")
-#     parser.add_argument('-f', '--imfile', type=str, default=r"testdata\703134876.184583.mp4")
-#     parser.add_argument('-s', '--sliced', type=bool, default=False)
-#     parser.add_argument('-d', '--device', type=str, default='cpu')
-#     parser.add_argument('-nc', '--numberofboxes', type=int, default=25)
-#     parser.add_argument('-o', '--outputdir', type=str, default= r"output")
-#     parser.add_argument('-v', '--video', type=bool, default=True)
-#     args = parser.parse_args()
-#     Inference(args)
