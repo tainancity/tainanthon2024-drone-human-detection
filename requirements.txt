@@ -6,3 +6,4 @@ pycocotools
 PyYAML
 scipy
 transformers
+yt-dlp

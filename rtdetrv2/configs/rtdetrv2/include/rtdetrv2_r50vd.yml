@@ -31,7 +31,7 @@ HybridEncoder:
 
   # intra
   hidden_dim: 256
-  use_encoder_idx: [2]
+  use_encoder_idx: [1]
   num_encoder_layers: 1
   nhead: 8
   dim_feedforward: 1024

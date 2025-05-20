@@ -118,7 +118,7 @@ def initModel(args):
     print("Load parameters")
     cfg = YAMLConfig(args.config, resume=args.resume)
     if args.resume:
-        checkpoint = torch.load(args.resume, map_location='cpu') 
+        checkpoint = torch.load(args.resume, map_location='cuda', weights_only=True) 
         if 'ema' in checkpoint:
             state = checkpoint['ema']['module']
         else:
@@ -148,7 +148,7 @@ def Inference(args):
     print("Load parameters")
     cfg = YAMLConfig(args.config, resume=args.resume)
     if args.resume:
-        checkpoint = torch.load(args.resume, map_location='cpu') 
+        checkpoint = torch.load(args.resume, map_location='cuda') 
         if 'ema' in checkpoint:
             state = checkpoint['ema']['module']
         else:
@@ -252,10 +252,10 @@ def Inference(args):
         
 def InitArgs(imfile, video, outputdir, device):
     parser = argparse.ArgumentParser()
-    parser.add_argument('-c', '--config', type=str, default=r"D:\Drone_humen_detect\tainanthon2024-drone-human-detection\rtdetrv2\configs\rtdetrv2\rtdetrv2_r50vd_6x_coco.yml")
-    parser.add_argument('-r', '--resume', type=str, default=r"D:\Drone_humen_detect\R50_att_C5_best.pth")  #要改model暫時先從這裡改
+    parser.add_argument('-c', '--config', type=str, default=r"D:\Code\Drone_Human_Detect_v2\rtdetrv2\configs\rtdetrv2\rtdetrv2_hgnetv2_x_6x_coco.yml")
+    parser.add_argument('-r', '--resume', type=str, default=r"D:\Code\Drone_Human_Detect_v2\weights\R50_att_C5_best.pth")  #要改model暫時先從這裡改
     parser.add_argument('-f', '--imfile', type=str, default=imfile)
-    parser.add_argument('-s', '--sliced', type=bool, default=True)
+    parser.add_argument('-s', '--sliced', type=bool, default=False)
     parser.add_argument('-d', '--device', type=str, default=device)
     parser.add_argument('-nc', '--numberofboxes', type=int, default=1)
     parser.add_argument('-o', '--outputdir', type=str, default= outputdir)
@@ -264,16 +264,3 @@ def InitArgs(imfile, video, outputdir, device):
     return args
     
     
-# if __name__ == '__main__':
-    
-#     parser = argparse.ArgumentParser()
-#     parser.add_argument('-c', '--config', type=str, default=r"C:\drone project\tainanthon2024-drone-human-detection\rtdetrv2\configs\rtdetrv2\rtdetrv2_r50vd_6x_coco.yml")
-#     parser.add_argument('-r', '--resume', type=str, default=r"C:\drone project\checkpoint0036.pth")
-#     parser.add_argument('-f', '--imfile', type=str, default=r"testdata\703134876.184583.mp4")
-#     parser.add_argument('-s', '--sliced', type=bool, default=False)
-#     parser.add_argument('-d', '--device', type=str, default='cpu')
-#     parser.add_argument('-nc', '--numberofboxes', type=int, default=25)
-#     parser.add_argument('-o', '--outputdir', type=str, default= r"output")
-#     parser.add_argument('-v', '--video', type=bool, default=True)
-#     args = parser.parse_args()
-#     Inference(args)

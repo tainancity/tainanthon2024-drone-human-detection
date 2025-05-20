@@ -23,5 +23,6 @@
     "anomaly_system": "Anomaly Detection System",
     "fps": "Inference speed: {fps} fps",
     "inference_time": "Inference time: {elapsed_time} seconds",
-    "file_name_conflict": "File name conflict: {file_name} already exists, please rename or delete the old file."
+    "file_name_conflict": "File name conflict: {file_name} already exists, please rename or delete the old file.",
+    "real_time_rendering": "Enable Real-time Rendering"
 }
