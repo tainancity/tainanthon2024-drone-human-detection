@@ -252,8 +252,8 @@ def Inference(args):
         
 def InitArgs(imfile, video, outputdir, device):
     parser = argparse.ArgumentParser()
-    parser.add_argument('-c', '--config', type=str, default=r"D:\Code\Drone_Human_Detect_v2\rtdetrv2\configs\rtdetrv2\rtdetrv2_r50vd_6x_coco.yml")
-    parser.add_argument('-r', '--resume', type=str, default=r"D:\Code\Drone_Human_Detect_v2\weights\R50_att_C5_best.pth")  #要改model暫時先從這裡改
+    parser.add_argument('-c', '--config', type=str, default=r".\rtdetrv2\configs\rtdetrv2\rtdetrv2_r50vd_6x_coco.yml")
+    parser.add_argument('-r', '--resume', type=str, default=r".\weights\R50_att_C5_best.pth")  #要改model暫時先從這裡改
     parser.add_argument('-f', '--imfile', type=str, default=imfile)
     parser.add_argument('-s', '--sliced', type=bool, default=False)
     parser.add_argument('-d', '--device', type=str, default=device)
