@@ -14,7 +14,7 @@
     "inference_stopped": "Inference interrupted!",
     "inference_completed": "Inference Completed",
     "clear_success": "Successfully cleaned all temporary files.",
-    "clear_fail": "Failed to clear files: {e}",
+    "clear_fail": "Failed to clear files: {e}. You can ignore this error.",
     "detected_people": "Detected people at the following seconds:\n",
     "on_time_infer_result": "Real-time Inference Result",
     "sidebar_title": "Drone-based Human Detection System",

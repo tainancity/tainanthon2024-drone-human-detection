@@ -14,7 +14,7 @@
     "inference_stopped": "推理已中斷！",
     "inference_completed": "推理完成",
     "clear_success": "成功清理所有臨時檔案.",
-    "clear_fail": "清除檔案失敗: {e}",
+    "clear_fail": "清除檔案失敗: {e}. 您可以直接忽略這個錯誤",
     "detected_people": "偵測到的人員在以下秒數：\n",
     "on_time_infer_result": "即時推理結果",
     "sidebar_title": "無人機人員偵測系統",
