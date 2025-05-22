@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 模型偵測系統</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>AI 模型偵測系統</h1>
+
+        <div class="upload-section">
+            <label for="fileInput" class="upload-button">選擇檔案</label>
+            <input type="file" id="fileInput" multiple accept=".mp4,.mov,.avi,.png,.jpg,.jpeg">
+            <div id="fileSelectionStatus" class="status-message info">請選擇檔案...</div> 
+            
+            <button id="uploadBtn">上傳檔案</button>
+            <div id="uploadStatus" class="status-message"></div>
+        </div>
+
+        <div id="selectedPreviewsContainer" class="preview-container">
+            <h2>已選擇檔案預覽</h2>
+            <div id="selectedPreviews"></div>
+        </div>
+
+        <div id="uploadedFilesDisplay" class="uploaded-files-display">
+            <h2>已上傳檔案</h2>
+            <div id="uploadedPreviews"></div> </div>
+
+        <div class="inference-section">
+            <button id="inferBtn" disabled>開始推理</button>
+            <div id="inferenceStatus" class="status-message"></div>
+            <div id="inferenceResults" class="results-display">
+                </div>
+        </div>
+
+        <div class="download-section">
+            <h2>下載結果</h2>
+            <button id="downloadOutputZipBtn" disabled>下載所有推斷結果 (ZIP)</button>
+            <button id="downloadLogZipBtn" disabled>下載所有日誌 (ZIP)</button>
+        </div>
+
+        <div class="cleanup-section">
+            <button id="cleanupBtn">清除所有檔案</button>
+            <div id="cleanupStatus" class="status-message"></div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
