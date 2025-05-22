@@ -324,44 +324,46 @@ def infer(args, model, name, format):
             # frame_placeholder = st.empty()
             current_frame = 0
             while cap.isOpened():
-                
+                t0 = time.perf_counter()
                 ret, frame = cap.read()
+                t1 = time.perf_counter()
                 if not ret:
-                    print("Frame end or can not read frame")
                     break
-                if interrupt_button:
-                    st.session_state.infer_correct = False
-                    is_interrupted = True
-                    st.warning(lang.get("inference_stopped"))
-                    break  # Break the loop to stop the inference
-                    
-                # change the graph type from bgr to rgb 
-                im_pil = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-                w, h = im_pil.size
-                orig_size = torch.tensor([w, h])[None].to(args.device)
-            
-                # Resize the graph and change to tensor type to inference
-                transforms = T.Compose([  
-                    T.ToTensor(),
-                    T.Resize((640, 640)),
-                ])
-                im_data = transforms(im_pil)[None].to(args.device)
-                    
+
+                # Preprocessing
+                t2 = time.perf_counter()
+                frame_resized = cv2.resize(frame, (640, 640), interpolation=cv2.INTER_LINEAR)
+                im_data = torch.from_numpy(frame_resized).permute(2, 0, 1).float() / 255.0
+                im_data = im_data.unsqueeze(0).to(args.device)
+                orig_size = torch.tensor([frame.shape[1], frame.shape[0]])[None].to(args.device)
+                t3 = time.perf_counter()
+
+                # Model inference
                 output = model(im_data, orig_size)
+                t4 = time.perf_counter()
+
+                # Postprocessing/drawing
+                im_pil = Image.fromarray(cv2.cvtColor(frame_resized, cv2.COLOR_BGR2RGB))  # <-- Add this line
                 labels, boxes, scores = output
-                    
                 detect_frame, box_count = draw([im_pil], labels, boxes, scores, 0.35)
                 frame_out = cv2.cvtColor(np.array(detect_frame), cv2.COLOR_RGB2BGR)
-                # Display inference result
-                # cv2.imshow("Real time Inference", cv2.resize(frame_out, (800, 600)))
-                # cv2.waitKey(1)
-                # 用 Streamlit 實時顯示推論結果
-                frame_display = cv2.resize(frame_out, (800, 600),  interpolation=cv2.INTER_LINEAR)
+                t5 = time.perf_counter()
+
+                # Streamlit UI update
+                frame_display = cv2.resize(frame_out, (800, 600), interpolation=cv2.INTER_LINEAR)
                 frame_rgb = cv2.cvtColor(frame_display, cv2.COLOR_BGR2RGB)
                 frame_pil = Image.fromarray(frame_rgb)
                 frame_placeholder.image(frame_pil, caption=lang.get("on_time_infer_result"), use_container_width=True)
+                t6 = time.perf_counter()
 
-                output_video.write(frame_out)
+                # Output video write
+                frame_out_resized = cv2.resize(frame_out, (width, height), interpolation=cv2.INTER_LINEAR)
+                output_video.write(frame_out_resized)
+                t7 = time.perf_counter()
+
+                # Print timings
+                print(f"Read: {t1-t0:.3f}s, Pre: {t3-t2:.3f}s, Infer: {t4-t3:.3f}s, Draw: {t5-t4:.3f}s, UI: {t6-t5:.3f}s, Write: {t7-t6:.3f}s")
+
                 
                 # Update the progress bar
                 current_frame += 1
