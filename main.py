@@ -12,7 +12,7 @@ import zipfile
 import shutil
 import uuid
 from rtdetrv2.tools.infer import InitArgs, draw, initModel
-from utils import stream
+from utils.stream import stream
 import time
 import locale
 import ctypes
@@ -442,9 +442,9 @@ if __name__ == '__main__':
     selected_language = st.sidebar.selectbox("Select Language", ["zh", "en"], index=lang_dicts.get(local_lang, 1))
     lang = load_language(selected_language)
     st.sidebar.title(lang.get("sidebar_title"))
-    page = st.sidebar.selectbox(lang.get("choose_method"), (lang.get("model_system"), lang.get("anomaly_system")))
+    page = st.sidebar.selectbox(lang.get("choose_method"), (lang.get("model_system"), lang.get("RTMP_title")))
     if page == "模型偵測系統" or page == "Model System":
         main()
     else:
-        stream()
+        stream(lang) 
     

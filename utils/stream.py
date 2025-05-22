@@ -1,26 +1,35 @@
 import cv2
 import streamlit as st
 import torch
+import os
+import time
 import numpy as np
 import torchvision.transforms as T
 from rtdetrv2.tools.infer import draw, initModel, InitArgs
 from PIL import Image
 import ffmpegcv
+import time
 
 def stream(lang):
     #stream_url = "rtmp://localhost:1935/live/test"
-    stream_url = "rtsp://192.168.100.101:8554/cam"
-    #stream_url = "http://192.168.100.101:8889/live/test"
+    stream_url = "rtsp://rpi.local:8554/cam"
+    #stream_url = "http://192.168.100.101:8889/cam"
 
     st.title(lang.get("RTMP_title"))
 
     stream_url = st.text_input("RTMP Stream URL", value=stream_url)
-    
 
     # device = cv2.cuda.Device(0) if torch.cuda.is_available() else "cpu"
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    cap = ffmpegcv.VideoCaptureStreamRT(stream_url=stream_url, codec="h264_cuvid", pix_fmt="yuv420p", gpu = 0)
+
+    gstreamer_str = (
+        f'rtspsrc protocols=tcp location={stream_url} latency=0 ! '
+        'decodebin ! videoconvert ! appsink'
+    )
+    #cap = cv2.VideoCapture(gstreamer_str, cv2.CAP_GSTREAMER)
     
+    cap = ffmpegcv.VideoCaptureStreamRT(stream_url, codec="h264", gpu=0)
+     
     args = InitArgs(imfile=None, video=False, outputdir=None, device=device)
     model = initModel(args)
 
@@ -31,7 +40,16 @@ def stream(lang):
         frame_placeholder = st.empty()
         infer_frame_placeholder = st.empty()
         stop = st.button("Stop", key="stop_button")
+
+        current_time = time.time()
+        new_time = time.time()
+
+        fps_info = st.empty()
+        fps = 0.0
+
         while cap.isOpened() and not stop:
+            fps_info.info(f"FPS: {fps:.2f}")
+            current_time = new_time
             ret, frame = cap.read()
             if not ret:
                 st.warning(lang.get("fail_read_frame"))
@@ -42,6 +60,9 @@ def stream(lang):
             infer_frame = infer_stream(args, frame, model)
             infer_frame = cv2.cvtColor(infer_frame, cv2.COLOR_BGR2RGB)
             infer_frame_placeholder.image(infer_frame, channels="RGB")
+            new_time = time.time()
+            fps = 1 / (new_time - current_time)
+            fps_info.empty() 
         cap.release()
 
 def infer_stream(args, frame, model):

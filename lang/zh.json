@@ -24,5 +24,9 @@
     "fps": "推理執行幀率: {fps} fps",
     "inference_time": "推理用時: {elapsed_time} 秒",
     "file_name_conflict": "檔案名稱衝突: {file_name} 已存在，請重新命名或刪除舊檔案。",
-    "real_time_rendering": "啟用即時渲染"
+    "real_time_rendering": "啟用即時渲染",
+    "RTMP_title": "RTMP串流",
+    "fail_open_rtmp": "無法打開RTMP串流",
+    "success_open_rtmp": "成功打開RTMP串流",
+    "fail_read_frame": "無法讀取影片幀"
 }
