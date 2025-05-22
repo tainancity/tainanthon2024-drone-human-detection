@@ -130,4 +130,10 @@ cython_debug/
 # Custom
 datasets/
 weights/
+inputFile/
+outputFile/
+log_files.zip
+output_files.zip
+log/
+test/
 

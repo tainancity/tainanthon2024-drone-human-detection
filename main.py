@@ -83,7 +83,7 @@ def main():
 
             # create dir of to save the input file and inference outcome
             base_name = file_name.split('.')[0]
-            if os.path.exists("outputfile") and base_name in os.listdir("outputFile"):
+            if os.path.exists("outputfile") and base_name in os.listdir("outputFile") and st.session_state.has_infer_result is False:
                 st.warning(lang.get("file_name_conflict").format(file_name=file_name))
                 continue
             uuid_name, name_mapping_table = change_name_to_uuid(file_name, name_mapping_table)
@@ -142,14 +142,11 @@ def main():
                     if file_extension in video_format:
                         log_path = make_log(st.session_state.detect_annotations[file_name], fps, original_name.split('.')[0])
                         st.session_state.completed_files.append(new_output_path)
-                        print(new_output_path)
-                        print(st.session_state.completed_files)
                         st.success(lang.get("file_saved").format(save_path=log_path))
             st.session_state.infer_correct = False
             st.session_state.has_infer_result = True
 
         if st.session_state.has_infer_result:
-            print(st.session_state.completed_files)
             for i, file_name in enumerate(completed_files):
                 st.video(file_name)
 
@@ -213,6 +210,8 @@ def cleanup_files():
         st.session_state.detect_annotations = {}
         st.session_state.infer_correct = False
         st.session_state.has_infer_result = False
+        st.session_state.name_mapping_table = []
+        st.session_state.completed_files = []
         shutil.rmtree("inputFile", ignore_errors=True)
         shutil.rmtree("outputFile", ignore_errors=True)
         shutil.rmtree("log", ignore_errors=True)
@@ -329,7 +328,6 @@ def infer(args, model, name, format):
                 t1 = time.perf_counter()
                 if not ret:
                     break
-
                 # Preprocessing
                 t2 = time.perf_counter()
                 frame_resized = cv2.resize(frame, (640, 640), interpolation=cv2.INTER_LINEAR)
