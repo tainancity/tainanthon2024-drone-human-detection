@@ -7,3 +7,5 @@ PyYAML
 scipy
 transformers
 yt-dlp
+flask
+flask-cors

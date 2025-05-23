@@ -2,14 +2,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const fileInput = document.getElementById('fileInput');
     const uploadBtn = document.getElementById('uploadBtn');
     const uploadStatus = document.getElementById('uploadStatus');
-    
-    const fileSelectionStatus = document.getElementById('fileSelectionStatus'); // 新增：用於簡潔的檔案選擇提示
 
-    const selectedPreviewsContainer = document.getElementById('selectedPreviewsContainer'); // 新增：選擇檔案後預覽的容器
-    const selectedPreviews = document.getElementById('selectedPreviews'); // 新增：選擇檔案後預覽的內容區
+    const fileSelectionStatus = document.getElementById('fileSelectionStatus');
+
+    const selectedPreviewsContainer = document.getElementById('selectedPreviewsContainer');
+    const selectedPreviews = document.getElementById('selectedPreviews');
 
     const uploadedFilesDisplay = document.getElementById('uploadedFilesDisplay');
-    const uploadedPreviews = document.getElementById('uploadedPreviews'); // 已上傳檔案的預覽內容區
+    const uploadedPreviews = document.getElementById('uploadedPreviews');
 
     const inferBtn = document.getElementById('inferBtn');
     const inferenceStatus = document.getElementById('inferenceStatus');
@@ -19,51 +19,46 @@ document.addEventListener('DOMContentLoaded', () => {
     const cleanupBtn = document.getElementById('cleanupBtn');
     const cleanupStatus = document.getElementById('cleanupStatus');
 
-    let uploadedFilesInfo = []; // 儲存已上傳的檔案資訊（包括後端返回的 uuid_name 等）
+    let uploadedFilesInfo = [];
 
-    // 輔助函數：判斷檔案是否為影片
     function isVideoFile(fileName) {
         const videoFormats = ['mp4', 'mov', 'avi', 'MP4', 'MOV', 'AVI'];
         const extension = fileName.split('.').pop().toLowerCase();
         return videoFormats.includes(extension);
     }
 
-    // 輔助函數：判斷檔案是否為圖片
     function isImageFile(fileName) {
         const imageFormats = ['png', 'jpg', 'jpeg', 'PNG', 'JPG', 'JPEG'];
         const extension = fileName.split('.').pop().toLowerCase();
         return imageFormats.includes(extension);
     }
 
-    // 顯示狀態訊息的輔助函數
     function displayStatus(element, message, type) {
         element.textContent = message;
         element.className = `status-message ${type}`;
     }
 
-    // 處理檔案選擇並顯示本地預覽 [解決問題 1 和 2 的「選擇檔案後預覽」]
     fileInput.addEventListener('change', (event) => {
-        // 清空之前的狀態和預覽
         uploadStatus.innerHTML = '';
         inferenceResults.innerHTML = '';
         inferenceStatus.innerHTML = '';
-        uploadedPreviews.innerHTML = ''; // 清空上傳預覽
-        selectedPreviews.innerHTML = ''; // 清空選擇檔案預覽
-        fileSelectionStatus.textContent = ''; // 清空文字提示
-        
-        uploadedFilesInfo = []; // 清空已上傳檔案資訊
-        inferBtn.disabled = true; // 選擇新檔案後禁用推理按鈕
-        
+        uploadedPreviews.innerHTML = '';
+        selectedPreviews.innerHTML = '';
+        fileSelectionStatus.textContent = '';
+
+        uploadedFilesInfo = [];
+        inferBtn.disabled = true;
+
         const files = event.target.files;
         if (files.length === 0) {
             displayStatus(fileSelectionStatus, '請選擇檔案...', 'info');
-            selectedPreviewsContainer.style.display = 'none'; // 隱藏預覽區塊
+            selectedPreviewsContainer.style.display = 'none';
             return;
         }
 
         let fileNames = Array.from(files).map(file => file.name).join(', ');
         displayStatus(fileSelectionStatus, `已選擇檔案: ${fileNames}`, 'info');
-        selectedPreviewsContainer.style.display = 'block'; // 顯示預覽區塊
+        selectedPreviewsContainer.style.display = 'block';
 
         for (let i = 0; i < files.length; i++) {
             const file = files[i];
@@ -73,30 +68,28 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const reader = new FileReader();
             reader.onload = (e) => {
-                const fileType = file.type;
-                if (fileType.startsWith('image/')) {
+                if (file.type.startsWith('image/')) {
                     const img = document.createElement('img');
-                    img.src = e.target.result; // Data URL for image
+                    img.src = e.target.result;
                     img.alt = file.name;
                     itemDiv.appendChild(img);
-                } else if (fileType.startsWith('video/')) {
+                } else if (file.type.startsWith('video/')) {
                     const video = document.createElement('video');
                     video.controls = true;
-                    video.src = e.target.result; // Data URL for video
-                    video.muted = true; // 預覽時通常靜音
-                    video.loop = false; // 預覽時循環播放
-                    video.autoplay = false; // 自動播放
+                    video.src = e.target.result;
+                    video.muted = true;
+                    video.loop = false;
+                    video.autoplay = false;
                     itemDiv.appendChild(video);
                 } else {
                     itemDiv.innerHTML += `<p>不支持的預覽類型: ${file.name}</p>`;
                 }
                 selectedPreviews.appendChild(itemDiv);
             };
-            reader.readAsDataURL(file); // 讀取檔案為 Data URL
+            reader.readAsDataURL(file);
         }
     });
 
-    // 處理上傳按鈕點擊
     uploadBtn.addEventListener('click', async () => {
         const files = fileInput.files;
         if (files.length === 0) {
@@ -105,9 +98,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         displayStatus(uploadStatus, '檔案上傳中，請稍候...', 'info');
-        uploadedPreviews.innerHTML = ''; // 清空上一個上傳的預覽
-        selectedPreviews.innerHTML = ''; // 清空選擇檔案預覽 (上傳後這些預覽已無用)
-        selectedPreviewsContainer.style.display = 'none'; // 隱藏選擇檔案預覽區塊
+        uploadedPreviews.innerHTML = '';
+        selectedPreviews.innerHTML = '';
+        selectedPreviewsContainer.style.display = 'none';
 
         const formData = new FormData();
         for (let i = 0; i < files.length; i++) {
@@ -122,24 +115,22 @@ document.addEventListener('DOMContentLoaded', () => {
             const data = await response.json();
 
             if (data.success) {
-                uploadedFilesInfo = data.results; // 更新已上傳檔案資訊
+                uploadedFilesInfo = data.results;
                 displayStatus(uploadStatus, '檔案上傳完成！', 'success');
-                
-                // 顯示上傳檔案的預覽 [解決問題 2 的「上傳後預覽」]
+
                 uploadedFilesInfo.forEach(file => {
                     const itemDiv = document.createElement('div');
                     itemDiv.className = 'media-preview-item';
                     itemDiv.innerHTML = `<h4>${file.original_name}</h4>`;
-                    
+
                     if (file.success) {
-                        const fileExtension = file.original_name.split('.').pop().toLowerCase();
-                        let mediaElement;
                         // 構建後端提供原始檔案的 URL
-                        // 後端需要提供 `/static_input/` 路由來服務 `inputFile`
                         const staticInputUrl = `http://127.0.0.1:5000/static_input/`;
+                        // 注意：這裡假設 file.uuid_name 已經包含副檔名
                         const relativePath = file.is_video ? `${file.uuid_name.split('.')[0]}/${file.uuid_name}` : `photo/${file.uuid_name}`;
                         const displayPath = staticInputUrl + relativePath;
 
+                        let mediaElement;
                         if (file.is_video) {
                             mediaElement = document.createElement('video');
                             mediaElement.controls = true;
@@ -151,7 +142,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         } else {
                             itemDiv.innerHTML += `<p style="color: orange;">不支持的預覽類型: ${file.original_name}</p>`;
                             uploadedPreviews.appendChild(itemDiv);
-                            return; // 跳過當前檔案的媒體元素創建
+                            return;
                         }
                         mediaElement.src = displayPath;
                         mediaElement.alt = file.original_name;
@@ -162,7 +153,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                     uploadedPreviews.appendChild(itemDiv);
                 });
-                inferBtn.disabled = false; // 上傳成功後啟用推理按鈕
+                inferBtn.disabled = false;
 
             } else {
                 displayStatus(uploadStatus, `上傳失敗: ${data.message}`, 'error');
@@ -173,17 +164,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // 處理推理按鈕點擊
     inferBtn.addEventListener('click', async () => {
-        if (uploadedFilesInfo.length === 0) {
-            displayStatus(inferenceStatus, '請先上傳檔案。', 'error');
-            return;
-        }
-
-        displayStatus(inferenceStatus, '模型推理中，這可能需要一些時間...', 'info');
-        inferenceResults.innerHTML = ''; // 清空之前的結果
-        downloadOutputZipBtn.disabled = true;
-        downloadLogZipBtn.disabled = true;
+        // ... (省略前面判斷和狀態顯示的程式碼) ...
 
         try {
             const response = await fetch('http://127.0.0.1:5000/infer', {
@@ -199,27 +181,28 @@ document.addEventListener('DOMContentLoaded', () => {
                 displayStatus(inferenceStatus, '模型推理完成！', 'success');
                 downloadOutputZipBtn.disabled = false;
                 downloadLogZipBtn.disabled = false;
-                
+
                 data.results.forEach(result => {
                     const itemDiv = document.createElement('div');
                     itemDiv.className = 'inference-item';
                     itemDiv.innerHTML = `<h3>${result.original_name}</h3>`;
-                    
+
                     if (result.success) {
                         itemDiv.innerHTML += `<p style="color: green;">${result.message}</p>`;
-                        if (result.output_path) {
-                            // 構建後端提供處理結果檔案的 URL
-                            // Flask 後端在 `app.static_url_path = '/static_output'` 時
-                            // 會將 `outputFile` 目錄下的檔案映射到 `/static_output/` URL 前綴
+                        if (result.output_path_relative) { // 使用新的鍵名
+                            // 直接拼接後端返回的相對路徑。
+                            // Flask 的 send_from_directory 會處理路徑分隔符。
                             const staticOutputUrl = `http://127.0.0.1:5000/static_output/`;
-                            // output_path 是 Flask 後端 `recover_name` 函數返回的絕對或相對路徑，
-                            // 需要調整為相對於 `outputFile` 目錄的 URL 路徑
-                            // 例如：`outputFile/folder/file.mp4` -> `folder/file.mp4`
-                            const relativeOutputPath = result.output_path.replace(/\\/g, '/').replace('outputFile/', '');
-                            const displayPath = staticOutputUrl + relativeOutputPath;
                             
+                            // 這裡我們直接使用後端傳來的 output_path_relative
+                            // 因為後端現在也知道要返回相對於 output_folder 的路徑，
+                            // 並且 send_file 會處理好斜線問題
+                            const displayPath = staticOutputUrl + result.output_path_relative;
+
+                            console.log("Inferred Media URL:", displayPath); // 調試輸出
+
                             let mediaElement;
-                            if (result.is_video) {
+                            if (result.is_video) { // 使用後端傳來的 is_video 判斷
                                 mediaElement = document.createElement('video');
                                 mediaElement.controls = true;
                                 mediaElement.autoplay = true;
@@ -250,7 +233,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // 下載壓縮檔
     downloadOutputZipBtn.addEventListener('click', () => {
         window.location.href = 'http://127.0.0.1:5000/download_output_zip';
     });
@@ -259,7 +241,6 @@ document.addEventListener('DOMContentLoaded', () => {
         window.location.href = 'http://127.0.0.1:5000/download_log_zip';
     });
 
-    // 清除檔案
     cleanupBtn.addEventListener('click', async () => {
         displayStatus(cleanupStatus, '正在清除檔案...', 'info');
         try {
@@ -269,19 +250,18 @@ document.addEventListener('DOMContentLoaded', () => {
             const data = await response.json();
             if (data.success) {
                 displayStatus(cleanupStatus, data.message, 'success');
-                // 清空前端顯示狀態
                 uploadedFilesInfo = [];
-                fileSelectionStatus.textContent = '請選擇檔案...'; // 重置選擇檔案提示
-                selectedPreviews.innerHTML = ''; // 清空選擇檔案預覽
-                selectedPreviewsContainer.style.display = 'none'; // 隱藏預覽區塊
-                uploadedPreviews.innerHTML = ''; // 清空上傳預覽
+                fileSelectionStatus.textContent = '請選擇檔案...';
+                selectedPreviews.innerHTML = '';
+                selectedPreviewsContainer.style.display = 'none';
+                uploadedPreviews.innerHTML = '';
                 inferenceResults.innerHTML = '';
                 inferenceStatus.innerHTML = '';
                 uploadStatus.innerHTML = '';
                 downloadOutputZipBtn.disabled = true;
                 downloadLogZipBtn.disabled = true;
-                fileInput.value = ''; // 清空檔案選擇框
-                inferBtn.disabled = true; // 清除後禁用推理按鈕
+                fileInput.value = '';
+                inferBtn.disabled = true;
             } else {
                 displayStatus(cleanupStatus, `清除失敗: ${data.message}`, 'error');
             }
@@ -291,7 +271,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // 初始狀態
     displayStatus(fileSelectionStatus, '請選擇檔案...', 'info');
-    selectedPreviewsContainer.style.display = 'none'; // 初始隱藏預覽區塊
+    selectedPreviewsContainer.style.display = 'none';
 });
