@@ -303,6 +303,7 @@ def infer(args, model, name, format):
             fps = cap.fps
             width = cap.width
             height = cap.height
+            preview_size = (800, height * 800 // width)
             
             # set output video type .mp4
             fourcc = cv2.VideoWriter_fourcc(*'avc1')
@@ -347,14 +348,14 @@ def infer(args, model, name, format):
                 #im_pil = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))  # <-- Add this line
                 labels, boxes, scores = output
                 detect_frame, box_count = draw([frame], labels, boxes, scores, 0.35)
-                frame_out = cv2.cvtColor(np.array(detect_frame), cv2.COLOR_RGB2BGR)
+                #frame_out = cv2.cvtColor(np.array(detect_frame), cv2.COLOR_RGB2BGR)
                 t5 = time.perf_counter()
 
                 # Streamlit UI update
                 #frame_display = 
                 #frame_rgb = cv2.cvtColor(frame_display, cv2.COLOR_BGR2RGB)
-                frame_pil = Image.fromarray(cv2.resize(frame_out, (800, 600), interpolation=cv2.INTER_LINEAR))
-                frame_placeholder.image(frame_pil, caption=lang.get("on_time_infer_result"), use_container_width=True)
+                frame_pil = Image.fromarray(cv2.cvtColor(cv2.resize(np.array(detect_frame), preview_size, interpolation=cv2.INTER_LINEAR), cv2.COLOR_BGR2RGB))
+                frame_placeholder.image(frame_pil, caption=lang.get("on_time_infer_result"), use_container_width=True, channels = "RGB")
                 t6 = time.perf_counter()
 
                 # Output video write
@@ -364,7 +365,6 @@ def infer(args, model, name, format):
                 # Print timings
                 print(f"Read: {t1-t0:.3f}s, Pre: {t3-t2:.3f}s, Infer: {t4-t3:.3f}s, Draw: {t5-t4:.3f}s, UI: {t6-t5:.3f}s, Write: {t7-t6:.3f}s")
 
-                
                 # Update the progress bar
                 current_frame += 1
                 progress = current_frame / total_frames
@@ -388,22 +388,16 @@ def infer(args, model, name, format):
             os.makedirs(args.outputdir, exist_ok=True)
             new_path = args.outputdir
             
-            im_pil = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
-            w, h = im_pil.size
-            orig_size = torch.tensor([w, h])[None].to(args.device)
+            image_resized = cv2.resize(img, (640, 640), interpolation=cv2.INTER_LINEAR)
+            im_data = torch.from_numpy(image_resized).permute(2, 0, 1).float() / 255.0
+            im_data = im_data.unsqueeze(0).to(args.device)
+            orig_size = torch.tensor([img.shape[1], img.shape[0]])[None].to(args.device)
         
-            # Resize the graph and change to tensor type to inference
-            transforms = T.Compose([
-                T.Resize((640, 640)),  
-                T.ToTensor(),
-            ])
-            im_data = transforms(im_pil)[None].to(args.device)
             output = model(im_data, orig_size)
             labels, boxes, scores = output
-            detect_frame, box_count = draw([im_pil], labels, boxes, scores, 0.35)
-            frame_out = cv2.cvtColor(np.array(detect_frame), cv2.COLOR_RGB2BGR)
-            cv2.imwrite(os.path.join(new_path,f"{photo_name}.{format}"),frame_out)
-            st.image(frame_out, channels="BGR")
+            detect_frame, box_count = draw([img], labels, boxes, scores, 0.35)
+            cv2.imwrite(os.path.join(new_path,f"{photo_name}.{format}"),detect_frame)
+            st.image(detect_frame, channels="BGR")
             end_time = time.time()
             elapsed_time = end_time - start_time
             st.info(lang.get("inference_time").format(elapsed_time=round(elapsed_time, 2)))
