@@ -321,13 +321,16 @@ def infer(args, model, name, format):
                 exit()
             # Diplay inference result in real time
             # frame_placeholder = st.empty()
-            current_frame = 0
+            ret, frame = cap.read()
+            orig_size = torch.tensor([width, height])[None].to(args.device)
+            current_frame = 1
             while cap.isOpened():
                 t0 = time.perf_counter()
                 ret, frame = cap.read()
                 t1 = time.perf_counter()
                 if not ret:
                     break
+
                 # Preprocessing
                 t2 = time.perf_counter()
                 frame_resized = cv2.resize(frame, (640, 640), interpolation=cv2.INTER_LINEAR)
@@ -341,22 +344,21 @@ def infer(args, model, name, format):
                 t4 = time.perf_counter()
 
                 # Postprocessing/drawing
-                im_pil = Image.fromarray(cv2.cvtColor(frame_resized, cv2.COLOR_BGR2RGB))  # <-- Add this line
+                #im_pil = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))  # <-- Add this line
                 labels, boxes, scores = output
-                detect_frame, box_count = draw([im_pil], labels, boxes, scores, 0.35)
+                detect_frame, box_count = draw([frame], labels, boxes, scores, 0.35)
                 frame_out = cv2.cvtColor(np.array(detect_frame), cv2.COLOR_RGB2BGR)
                 t5 = time.perf_counter()
 
                 # Streamlit UI update
-                frame_display = cv2.resize(frame_out, (800, 600), interpolation=cv2.INTER_LINEAR)
-                frame_rgb = cv2.cvtColor(frame_display, cv2.COLOR_BGR2RGB)
-                frame_pil = Image.fromarray(frame_rgb)
+                #frame_display = 
+                #frame_rgb = cv2.cvtColor(frame_display, cv2.COLOR_BGR2RGB)
+                frame_pil = Image.fromarray(cv2.resize(frame_out, (800, 600), interpolation=cv2.INTER_LINEAR))
                 frame_placeholder.image(frame_pil, caption=lang.get("on_time_infer_result"), use_container_width=True)
                 t6 = time.perf_counter()
 
                 # Output video write
-                frame_out_resized = cv2.resize(frame_out, (width, height), interpolation=cv2.INTER_LINEAR)
-                output_video.write(frame_out_resized)
+                output_video.write(detect_frame)
                 t7 = time.perf_counter()
 
                 # Print timings

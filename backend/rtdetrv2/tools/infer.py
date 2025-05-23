@@ -101,19 +101,30 @@ def merge_predictions(predictions, slice_coordinates, orig_image_size, slice_wid
         merged_boxes.extend(valid_boxes)
         merged_scores.extend(valid_scores)
     return np.array(merged_labels), np.array(merged_boxes), np.array(merged_scores)
-def draw(images, labels, boxes, scores, thrh = 0.6, path = ""):
+def draw(images, labels, boxes, scores, thrh=0.6, path=""):
+    """
+    images: list of np.ndarray (BGR)
+    labels: list/np.ndarray of labels (per image)
+    boxes: list/np.ndarray of boxes (per image), shape [N, 4]
+    scores: list/np.ndarray of scores (per image)
+    """
     for i, im in enumerate(images):
         box_count = 0
-        draw = ImageDraw.Draw(im)
+        img = im.copy()  # Don't modify original
         scr = scores[i]
         lab = labels[i][scr > thrh]
         box = boxes[i][scr > thrh]
         scrs = scores[i][scr > thrh]
         box_count += len(box)
-        for j,b in enumerate(box):
-            draw.rectangle(list(b), outline='red',width=5)
-            draw.text((b[0], b[1]), text=f"human: {lab[j].item()} {round(scrs[j].item(),2)}", font=ImageFont.load_default(), fill='blue')
-        return im, box_count
+        for j, b in enumerate(box):
+            # Draw rectangle (convert to int)
+            pt1 = (int(b[0]), int(b[1]))
+            pt2 = (int(b[2]), int(b[3]))
+            cv2.rectangle(img, pt1, pt2, (0, 0, 255), 2)
+            # Draw label and score
+            label_text = f"human: {lab[j].item()} {round(scrs[j].item(),2)}"
+            cv2.putText(img, label_text, (pt1[0], pt1[1] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0), 2)
+        return img, box_count
 def initModel(args):
     print("Load parameters")
     cfg = YAMLConfig(args.config, resume=args.resume)
