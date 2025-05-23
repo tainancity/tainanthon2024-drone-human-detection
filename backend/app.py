@@ -35,8 +35,8 @@ os.makedirs(app.config['LOG_FOLDER'], exist_ok=True)
 
 # 配置 Flask 靜態檔案服務
 # 用於提供模型推理後的結果檔案 (outputFile)
-app.static_folder = 'outputFile'
-app.static_url_path = '/static_output'
+""" app.static_folder = 'outputFile'
+app.static_url_path = '/static_output' """
 
 # 新增：用於提供已上傳的原始檔案 (inputFile)
 # 這裡我們使用一個不同的端點名稱，例如 '/static_input'
@@ -47,6 +47,14 @@ def serve_input_file(filename):
     # 我們需要從 inputFile 中找到它
     return send_file(os.path.join(app.config['UPLOAD_FOLDER'], filename))
 
+@app.route('/static_output/<path:filename>')
+def serve_output_file(filename):
+    # Flask 會將此 filename (e.g., '5/5.mp4' 或 'photo/1.jpg') 
+    # 與 app.config['OUTPUT_FOLDER'] 拼接，自動處理斜線方向。
+    return send_file(os.path.join(app.config['OUTPUT_FOLDER'], filename))
+
+print(f"DEBUG: Flask App Current Working Directory: {os.getcwd()}")
+print(f"DEBUG: Flask static_folder path: {os.path.abspath(app.static_folder)}")
 
 # 模擬 session_state，在真實生產環境應使用更持久的儲存（如資料庫）
 # 或者每個請求獨立處理，避免共享狀態
@@ -88,35 +96,43 @@ def change_name_to_uuid(file_name, mapping_table):
 def recover_name(uuid_name, mapping_table, file_type):
     for old_name, new_name in mapping_table:
         if uuid_name == new_name:
-            # 這是獲取原始檔案名的邏輯
-            original_file_name = old_name 
-            
-            # 構建恢復後的檔案路徑
+            original_file_name = old_name
+
             if file_type == "video":
                 old_base_name = old_name.split('.')[0]
                 new_base_name = new_name.split('.')[0]
-                
-                # 重命名 output 資料夾和檔案
-                old_folder_path = os.path.join(app.config['OUTPUT_FOLDER'], new_base_name)
-                new_folder_path = os.path.join(app.config['OUTPUT_FOLDER'], old_base_name)
-                
-                if os.path.exists(old_folder_path):
-                    shutil.move(old_folder_path, new_folder_path)
-                    
-                old_file_path = os.path.join(new_folder_path, new_name)
-                new_file_path = os.path.join(new_folder_path, old_name)
-                
-                if os.path.exists(old_file_path):
-                    os.rename(old_file_path, new_file_path)
-                
-                return original_file_name, new_file_path
+
+                old_output_folder_path = os.path.join(app.config['OUTPUT_FOLDER'], new_base_name)
+                new_output_folder_path = os.path.join(app.config['OUTPUT_FOLDER'], old_base_name)
+
+                if os.path.exists(old_output_folder_path):
+                    shutil.move(old_output_folder_path, new_output_folder_path)
+
+                old_output_file_path = os.path.join(new_output_folder_path, new_name)
+                new_output_file_path = os.path.join(new_output_folder_path, old_name)
+
+                if os.path.exists(old_output_file_path):
+                    os.rename(old_output_file_path, new_output_file_path)
+
+                # **** 添加這個打印，這是核心排查點 ****
+                print(f"DEBUG: Recovered Video Path (physical): {new_output_file_path}")
+
+                relative_path_for_frontend = os.path.join(old_base_name, old_name).replace('\\', '/')
+                return original_file_name, relative_path_for_frontend
+
             else: # photo
-                old_file_path = os.path.join(app.config['OUTPUT_FOLDER'], 'photo', new_name)
-                new_file_path = os.path.join(app.config['OUTPUT_FOLDER'], 'photo', old_name)
-                if os.path.exists(old_file_path):
-                    os.rename(old_file_path, new_file_path)
-                return original_file_name, new_file_path
-    return None, None # Should not happen if uuid_name is valid
+                old_output_file_path = os.path.join(app.config['OUTPUT_FOLDER'], 'photo', new_name)
+                new_output_file_path = os.path.join(app.config['OUTPUT_FOLDER'], 'photo', old_name)
+
+                if os.path.exists(old_output_file_path):
+                    os.rename(old_output_file_path, new_output_file_path)
+
+                # **** 添加這個打印，這是核心排查點 ****
+                print(f"DEBUG: Recovered Image Path (physical): {new_output_file_path}")
+
+                relative_path_for_frontend = os.path.join('photo', old_name).replace('\\', '/')
+                return original_file_name, relative_path_for_frontend
+    return None, None
 
 
 def make_log(annotations, fps, file_name_base):
@@ -158,33 +174,52 @@ def perform_inference(file_path, is_video, output_base_dir, uuid_name):
         
         # 輸出影片的暫存路徑
         output_video_path = os.path.join(output_dir_for_file, uuid_name)
-        fourcc = cv2.VideoWriter_fourcc(*'mp4v') # 使用 mp4v 編碼器
+        fourcc = cv2.VideoWriter_fourcc(*'avc1') 
         output_video = cv2.VideoWriter(output_video_path, fourcc, fps, (width, height))
 
         current_frame = 0
         while cap.isOpened():
-            ret, frame = cap.read()
-            if not ret:
-                break
-            
-            frame_resized = cv2.resize(frame, (640, 640), interpolation=cv2.INTER_LINEAR)
-            im_data = torch.from_numpy(frame_resized).permute(2, 0, 1).float() / 255.0
-            im_data = im_data.unsqueeze(0).to(device)
-            orig_size = torch.tensor([frame.shape[1], frame.shape[0]])[None].to(device)
+                t0 = time.perf_counter()
+                ret, frame = cap.read()
+                t1 = time.perf_counter()
+                if not ret:
+                    break
 
-            output = model(im_data, orig_size)
-            labels, boxes, scores = output
-            
-            im_pil = Image.fromarray(cv2.cvtColor(frame_resized, cv2.COLOR_BGR2RGB))
-            detect_frame, box_count = draw([im_pil], labels, boxes, scores, 0.35)
-            frame_out = cv2.cvtColor(np.array(detect_frame), cv2.COLOR_RGB2BGR)
+                # Preprocessing
+                t2 = time.perf_counter()
+                frame_resized = cv2.resize(frame, (640, 640), interpolation=cv2.INTER_LINEAR)
+                im_data = torch.from_numpy(frame_resized).permute(2, 0, 1).float() / 255.0
+                im_data = im_data.unsqueeze(0).to(args.device)
+                orig_size = torch.tensor([frame.shape[1], frame.shape[0]])[None].to(args.device)
+                t3 = time.perf_counter()
 
-            frame_out_resized = cv2.resize(frame_out, (width, height), interpolation=cv2.INTER_LINEAR)
-            output_video.write(frame_out_resized)
-            
-            if box_count > 0:
-                detect_annotation.append(current_frame)
-            current_frame += 1
+                # Model inference
+                output = model(im_data, orig_size)
+                t4 = time.perf_counter()
+
+                # Postprocessing/drawing
+                #im_pil = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))  # <-- Add this line
+                labels, boxes, scores = output
+                detect_frame, box_count = draw([frame], labels, boxes, scores, 0.35)
+                frame_out = cv2.cvtColor(np.array(detect_frame), cv2.COLOR_RGB2BGR)
+                t5 = time.perf_counter()
+
+                # Streamlit UI update
+                #frame_display = 
+                #frame_rgb = cv2.cvtColor(frame_display, cv2.COLOR_BGR2RGB)
+                frame_pil = Image.fromarray(cv2.resize(frame_out, (800, 600), interpolation=cv2.INTER_LINEAR))
+                t6 = time.perf_counter()
+
+                # Output video write
+                output_video.write(detect_frame)
+                t7 = time.perf_counter()
+
+                # Print timings
+                print(f"Read: {t1-t0:.3f}s, Pre: {t3-t2:.3f}s, Infer: {t4-t3:.3f}s, Draw: {t5-t4:.3f}s, UI: {t6-t5:.3f}s, Write: {t7-t6:.3f}s")
+
+                # Collect the frame that is detected
+                if  box_count > 0:
+                    detect_annotation.append(current_frame)
         
         cap.release()
         output_video.release()
@@ -195,23 +230,22 @@ def perform_inference(file_path, is_video, output_base_dir, uuid_name):
         if img is None:
             return [], None, "Error: Could not read image."
             
-        im_pil = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
-        w, h = im_pil.size
-        orig_size = torch.tensor([w, h])[None].to(device)
-        
-        transforms = T.Compose([
-            T.Resize((640, 640)),  
-            T.ToTensor(),
-        ])
-        im_data = transforms(im_pil)[None].to(device)
+        start_time = time.time()
+        image_resized = cv2.resize(img, (640, 640), interpolation=cv2.INTER_LINEAR)
+        im_data = torch.from_numpy(image_resized).permute(2, 0, 1).float() / 255.0
+        im_data = im_data.unsqueeze(0).to(args.device)
+        orig_size = torch.tensor([img.shape[1], img.shape[0]])[None].to(args.device)
+
         output = model(im_data, orig_size)
         labels, boxes, scores = output
-        
-        detect_frame, box_count = draw([im_pil], labels, boxes, scores, 0.35)
-        frame_out = cv2.cvtColor(np.array(detect_frame), cv2.COLOR_RGB2BGR)
-        
+        detect_frame, box_count = draw([img], labels, boxes, scores, 0.35)
+
         output_image_path = os.path.join(output_dir_for_file, uuid_name)
-        cv2.imwrite(output_image_path, frame_out)
+        cv2.imwrite(output_image_path, detect_frame)
+        end_time = time.time()
+        elapsed_time = end_time - start_time
+        print(f"Image inference time: {elapsed_time:.2f} seconds")
+
         return detect_annotation, output_image_path, None
 
 # --- Flask API 接口 ---
@@ -291,41 +325,42 @@ def start_inference():
         return jsonify({"success": False, "message": "No files uploaded for inference."}), 400
 
     inference_results = []
-    
+
     for uuid_name, file_info in uploaded_files_info.items():
         original_name = file_info['original_name']
         file_path = file_info['path']
         is_video = file_info['is_video']
-        
+
+        # 這裡的邏輯需要調整，確保即使是已推斷過的，也能正確地返回相對路徑
+        # 如果 detect_annotations[uuid_name] 不為 None，表示已經推斷過
+        # 我們直接從 recover_name 獲取其最終的相對路徑
         if uuid_name in detect_annotations and detect_annotations[uuid_name] is not None:
-            # 避免重複推斷
-            # 重新獲取恢復後的路徑，以確保即使重新整理也能正確顯示
-            original_name_recovered, final_output_path = recover_name(
+            # 避免重複推斷，但仍返回正確的輸出路徑
+            original_name_recovered, relative_output_path_for_frontend = recover_name(
                 uuid_name, name_mapping_table, "video" if is_video else "photo"
             )
-            
-            # 如果原始日誌檔名存在，則重建日誌檔名
+
             log_path = None
-            if original_name_recovered:
+            if original_name_recovered and is_video:
                 log_path = os.path.join(app.config['LOG_FOLDER'], original_name_recovered.split('.')[0] + '.txt')
 
             inference_results.append({
                 "original_name": original_name,
                 "uuid_name": uuid_name,
+                "is_video": is_video, # 新增這個，讓前端知道是圖片還是影片
                 "success": True,
                 "message": f"File '{original_name}' already inferred.",
-                "output_path": final_output_path, 
+                "output_path_relative": relative_output_path_for_frontend, # 返回相對路徑
                 "log_path": log_path,
-                "is_video": is_video
             })
             continue
 
         start_time = time.time()
-        annotations, output_file_path, error_msg = perform_inference(
+        annotations, output_file_absolute_path, error_msg = perform_inference(
             file_path, is_video, app.config['OUTPUT_FOLDER'], uuid_name
         )
         end_time = time.time()
-        
+
         if error_msg:
             inference_results.append({
                 "original_name": original_name,
@@ -335,12 +370,12 @@ def start_inference():
             })
         else:
             detect_annotations[uuid_name] = annotations
-            
-            # 恢復原始檔名並獲取最終輸出路徑
-            original_name_recovered, final_output_path = recover_name(
+
+            # recover_name 會處理檔名恢復和資料夾重命名，並返回用於前端的相對路徑
+            original_name_recovered, relative_output_path_for_frontend = recover_name(
                 uuid_name, name_mapping_table, "video" if is_video else "photo"
             )
-            
+
             log_path = None
             if is_video and original_name_recovered:
                 # 獲取影片的 fps 用於 log
@@ -348,17 +383,17 @@ def start_inference():
                 fps = cap.get(cv2.CAP_PROP_FPS)
                 cap.release()
                 log_path = make_log(annotations, fps, original_name_recovered.split('.')[0])
-            
+
             inference_results.append({
                 "original_name": original_name,
                 "uuid_name": uuid_name,
+                "is_video": is_video, # 新增這個，讓前端知道是圖片還是影片
                 "success": True,
                 "message": f"Inference completed for '{original_name}' in {end_time - start_time:.2f}s.",
-                "output_path": final_output_path, # 提供前端展示和下載
+                "output_path_relative": relative_output_path_for_frontend, # 返回相對路徑
                 "log_path": log_path,
-                "is_video": is_video
             })
-    
+
     return jsonify({"success": True, "results": inference_results})
 
 @app.route('/download_output_zip')
