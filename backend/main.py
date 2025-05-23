@@ -335,9 +335,7 @@ def infer(args, model, name, format):
                 # Preprocessing
                 t2 = time.perf_counter()
                 frame_resized = cv2.resize(frame, (640, 640), interpolation=cv2.INTER_LINEAR)
-                im_data = torch.from_numpy(frame_resized).permute(2, 0, 1).float() / 255.0
-                im_data = im_data.unsqueeze(0).to(args.device)
-                orig_size = torch.tensor([frame.shape[1], frame.shape[0]])[None].to(args.device)
+                im_data = (torch.from_numpy(frame_resized).permute(2, 0, 1).float() / 255.0).unsqueeze(0).to(args.device)
                 t3 = time.perf_counter()
 
                 # Model inference
@@ -345,15 +343,11 @@ def infer(args, model, name, format):
                 t4 = time.perf_counter()
 
                 # Postprocessing/drawing
-                #im_pil = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))  # <-- Add this line
                 labels, boxes, scores = output
                 detect_frame, box_count = draw([frame], labels, boxes, scores, 0.35)
-                #frame_out = cv2.cvtColor(np.array(detect_frame), cv2.COLOR_RGB2BGR)
                 t5 = time.perf_counter()
 
                 # Streamlit UI update
-                #frame_display = 
-                #frame_rgb = cv2.cvtColor(frame_display, cv2.COLOR_BGR2RGB)
                 frame_pil = Image.fromarray(cv2.cvtColor(cv2.resize(np.array(detect_frame), preview_size, interpolation=cv2.INTER_LINEAR), cv2.COLOR_BGR2RGB))
                 frame_placeholder.image(frame_pil, caption=lang.get("on_time_infer_result"), use_container_width=True, channels = "RGB")
                 t6 = time.perf_counter()
@@ -388,9 +382,8 @@ def infer(args, model, name, format):
             os.makedirs(args.outputdir, exist_ok=True)
             new_path = args.outputdir
             
-            image_resized = cv2.resize(img, (640, 640), interpolation=cv2.INTER_LINEAR)
-            im_data = torch.from_numpy(image_resized).permute(2, 0, 1).float() / 255.0
-            im_data = im_data.unsqueeze(0).to(args.device)
+            image_resized = cv2.cvtColor(cv2.resize(img, (640, 640), interpolation=cv2.INTER_LINEAR), cv2.COLOR_BGR2RGB)
+            im_data = (torch.from_numpy(image_resized).permute(2, 0, 1).float() / 255.0).unsqueeze(0).to(args.device)
             orig_size = torch.tensor([img.shape[1], img.shape[0]])[None].to(args.device)
         
             output = model(im_data, orig_size)
