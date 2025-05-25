@@ -200,6 +200,20 @@ button:disabled {
     color: #007bff;
 }
 
+button#interruptBtn {
+    background-color: #dc3545; /* 紅色 */
+    color: white;
+}
+
+button#interruptBtn:hover {
+    background-color: #c82333;
+}
+
+button#interruptBtn:disabled {
+    background-color: #cccccc;
+    cursor: not-allowed;
+}
+
 .download-section button {
     background-color: #17a2b8; /* Info color */
 }

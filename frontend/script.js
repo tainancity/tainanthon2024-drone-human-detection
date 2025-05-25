@@ -13,6 +13,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const inferBtn = document.getElementById('inferBtn');
     const inferenceStatus = document.getElementById('inferenceStatus');
+    const interruptBtn = document.getElementById('interruptInferBtn');
     const inferenceResults = document.getElementById('inferenceResults');
     const downloadOutputZipBtn = document.getElementById('downloadOutputZipBtn');
     const downloadLogZipBtn = document.getElementById('downloadLogZipBtn');
@@ -78,6 +79,7 @@ document.addEventListener('DOMContentLoaded', () => {
             currentFileInference.textContent = '';
             inferenceProgressBarContainer.style.display = 'block';
             inferBtn.disabled = true; // 禁用推理按鈕
+            interruptBtn.disabled = false;
         });
 
         // 監聽單個檔案推理開始事件
@@ -103,6 +105,7 @@ document.addEventListener('DOMContentLoaded', () => {
             downloadOutputZipBtn.disabled = false;
             downloadLogZipBtn.disabled = false;
             inferBtn.disabled = false; // 重新啟用推理按鈕
+            interruptBtn.disabled = true; // 禁用中斷按鈕
             
         });
 
@@ -112,6 +115,18 @@ document.addEventListener('DOMContentLoaded', () => {
             displayStatus(inferenceStatus, `推理過程中發生錯誤: ${error.message}`, 'error');
             inferenceProgressBarContainer.style.display = 'none'; // 隱藏進度條
             inferBtn.disabled = false; // 重新啟用推理按鈕
+            interruptBtn.disabled = true; // 禁用中斷按鈕
+        });
+
+        // 監聽中斷事件
+        socket.on('inference_interrupted', (data) => {
+            console.log('Inference interrupted:', data);
+            displayStatus(inferenceStatus, `推理已中斷: ${data.message}`, 'info');
+            inferenceProgressBarContainer.style.display = 'none'; // 隱藏進度條
+            inferBtn.disabled = false; // 重新啟用開始推理按鈕
+            interruptBtn.disabled = true; // 禁用中斷按鈕
+            // 可選：為被中斷的檔案顯示特定的消息
+            // addInferenceResultToDisplay(data); // 如果後端傳遞了足夠的數據
         });
     }
 
@@ -303,11 +318,18 @@ document.addEventListener('DOMContentLoaded', () => {
         // 清空之前的結果
         inferenceResults.innerHTML = '';
         inferBtn.disabled = true; // 禁用推理按鈕
+        interruptBtn.disabled = false; // 啟用中斷按鈕
         downloadOutputZipBtn.disabled = true;
         downloadLogZipBtn.disabled = true;
         
         // 透過 SocketIO 發送啟動批次推理的事件
         socket.emit('start_inference_batch');
+    });
+
+     interruptBtn.addEventListener('click', () => {
+        displayStatus(inferenceStatus, '正在發送中斷請求...', 'info');
+        interruptBtn.disabled = true; // 發送請求後先禁用按鈕
+        socket.emit('interrupt_inference'); // 發送中斷事件
     });
 
     downloadOutputZipBtn.addEventListener('click', () => {
@@ -350,6 +372,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    interruptBtn.disabled = true; // 預設禁用中斷按鈕
     displayStatus(fileSelectionStatus, '請選擇檔案...', 'info');
     selectedPreviewsContainer.style.display = 'none';
 

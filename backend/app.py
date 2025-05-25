@@ -25,9 +25,6 @@ from rtdetrv2.tools.infer import InitArgs, draw, initModel
 app = Flask(__name__)
 CORS(app) 
 
-# 初始化 SocketIO。async_mode 可以選擇 'eventlet', 'gevent' 或 None (默認 eventlet)
-# 如果您沒有額外安裝 eventlet 或 gevent，使用 async_mode=None 會自動選擇最合適的
-# 但如果想確保非同步，推薦安裝 eventlet (pip install eventlet)
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet') # 設置 CORS 允許所有來源
 
 app.config['UPLOAD_FOLDER'] = 'inputFile'
@@ -40,34 +37,25 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 os.makedirs(app.config['OUTPUT_FOLDER'], exist_ok=True)
 os.makedirs(app.config['LOG_FOLDER'], exist_ok=True)
 
-# 配置 Flask 靜態檔案服務
-# 用於提供模型推理後的結果檔案 (outputFile)
-""" app.static_folder = 'outputFile'
-app.static_url_path = '/static_output' """
-
 # 新增：用於提供已上傳的原始檔案 (inputFile)
-# 這裡我們使用一個不同的端點名稱，例如 '/static_input'
-# 這個路由需要手動註冊，因為 Flask 的 `static_folder` 只能設定一個
 @app.route('/static_input/<path:filename>')
 def serve_input_file(filename):
-    # 這裡的 filename 包含了子目錄（例如 photo/image.jpg 或 uuid_folder/video.mp4）
-    # 我們需要從 inputFile 中找到它
     return send_file(os.path.join(app.config['UPLOAD_FOLDER'], filename))
 
 @app.route('/static_output/<path:filename>')
 def serve_output_file(filename):
-    # Flask 會將此 filename (e.g., '5/5.mp4' 或 'photo/1.jpg') 
-    # 與 app.config['OUTPUT_FOLDER'] 拼接，自動處理斜線方向。
     return send_file(os.path.join(app.config['OUTPUT_FOLDER'], filename))
 
 print(f"DEBUG: Flask App Current Working Directory: {os.getcwd()}")
 # print(f"DEBUG: Flask static_folder path: {os.path.abspath(app.static_folder)}")
 
 # 模擬 session_state，在真實生產環境應使用更持久的儲存（如資料庫）
-# 或者每個請求獨立處理，避免共享狀態
 uploaded_files_info = {} # key: original_filename, value: {'uuid_name': ..., 'file_type': ...}
 name_mapping_table = [] # (original_name, uuid_name)
 detect_annotations = {} # key: uuid_name, value: list of detected frames/info
+
+# key: session ID (sid), value: True (表示請求中斷) 或 False
+interrupt_requests = {} 
 
 video_format = ['mp4', 'mov', 'avi', 'MP4', 'MOV', 'AVI']
 image_format = ['png', 'jpg', 'jpeg', 'PNG', 'JPG', 'JPEG']
@@ -121,9 +109,6 @@ def recover_name(uuid_name, mapping_table, file_type):
                 if os.path.exists(old_output_file_path):
                     os.rename(old_output_file_path, new_output_file_path)
 
-                # **** 添加這個打印，這是核心排查點 ****
-                print(f"DEBUG: Recovered Video Path (physical): {new_output_file_path}")
-
                 relative_path_for_frontend = os.path.join(old_base_name, old_name).replace('\\', '/')
                 return original_file_name, relative_path_for_frontend
 
@@ -133,9 +118,6 @@ def recover_name(uuid_name, mapping_table, file_type):
 
                 if os.path.exists(old_output_file_path):
                     os.rename(old_output_file_path, new_output_file_path)
-
-                # **** 添加這個打印，這是核心排查點 ****
-                print(f"DEBUG: Recovered Image Path (physical): {new_output_file_path}")
 
                 relative_path_for_frontend = os.path.join('photo', old_name).replace('\\', '/')
                 return original_file_name, relative_path_for_frontend
@@ -188,6 +170,15 @@ def perform_inference(sid, file_path, is_video, output_base_dir, uuid_name):
 
         current_frame = 0
         while cap.isOpened():
+                if interrupt_requests.get(sid): # 檢查當前 sid 是否請求中斷
+                    print(f"Inference interrupted for {uuid_name} by client {sid}")
+                    socketio.emit('inference_interrupted', {'message': f'Inference interrupted for {uuid_name}.', 'uuid_name': uuid_name}, room=sid)
+                    cap.release()
+                    output_video.release()
+                    # 在中斷時清除該 sid 的中斷標誌
+                    interrupt_requests[sid] = False 
+                    return [], None, "Inference interrupted" # 返回中斷狀態
+
                 t0 = time.perf_counter()
                 ret, frame = cap.read()
                 t1 = time.perf_counter()
@@ -242,6 +233,12 @@ def perform_inference(sid, file_path, is_video, output_base_dir, uuid_name):
         if img is None:
             socketio.emit('inference_error', {'message': f'Failed to read image: {file_path}'}, room=sid)
             return [], None, "Error: Could not read image."
+        
+        if interrupt_requests.get(sid):
+            print(f"Inference interrupted for {uuid_name} by client {sid}")
+            socketio.emit('inference_interrupted', {'message': f'Inference interrupted for {uuid_name}.', 'uuid_name': uuid_name}, room=sid)
+            interrupt_requests[sid] = False
+            return [], None, "Inference interrupted"
             
         start_time = time.time()
         image_resized = cv2.resize(img, (640, 640), interpolation=cv2.INTER_LINEAR)
@@ -342,11 +339,18 @@ def test_connect():
 def test_disconnect():
     print('Client disconnected:', request.sid)
 
+@socketio.on('interrupt_inference')
+def handle_interrupt_inference():
+    sid = request.sid
+    print(f"Client {sid} requested interruption.")
+    interrupt_requests[sid] = True # 設置中斷標誌
+
 @socketio.on('start_inference_batch') # 接收前端發送的批次推理請求
 def handle_start_inference_batch():
     global uploaded_files_info, detect_annotations, name_mapping_table
     
     sid = request.sid # 獲取當前連接的 session ID
+    interrupt_requests[sid] = False 
 
     if not uploaded_files_info:
         socketio.emit('inference_error', {'message': 'No files uploaded for inference.'}, room=sid)
@@ -400,7 +404,20 @@ def handle_start_inference_batch():
         )
         end_time = time.time()
 
-        if error_msg:
+        if error_msg == "Inference interrupted":
+            result_data = {
+                "original_name": original_name,
+                "uuid_name": uuid_name,
+                "success": False, # 中斷也算不成功完成
+                "message": f"Inference was interrupted for '{original_name}'.",
+                "index": i
+            }
+            inference_results.append(result_data)
+            # 發送給前端，讓前端知道這個文件被中斷了
+            socketio.emit('file_inference_interrupted', result_data, room=sid) 
+            # 如果是中斷，則跳出整個批次推理迴圈
+            break 
+        elif error_msg:
             result_data = {
                 "original_name": original_name,
                 "uuid_name": uuid_name,
@@ -569,6 +586,4 @@ def cleanup_files():
 
 if __name__ == '__main__':
     print(f"DEBUG: Flask App Current Working Directory: {os.getcwd()}")
-    # print(f"DEBUG: Flask static_folder path: {os.path.abspath(app.static_folder)}") # 這行會報錯因為 app.static_folder 可能為 None
-    # 運行 Flask-SocketIO 應用，而不是 app.run()
     socketio.run(app, debug=True, port=5000, allow_unsafe_werkzeug=True) # allow_unsafe_werkzeug 僅用於開發環境
