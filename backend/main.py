@@ -17,6 +17,8 @@ import time
 import locale
 import ctypes
 import ffmpegcv
+import threading
+import queue
 
 video_format = ['mp4', 'mov', 'avi', 'MP4', 'MOV', 'AVI']
 image_format = ['png', 'jpg', 'jpeg', 'PNG', 'JPG', 'JPEG']
@@ -290,12 +292,56 @@ def  recover_name(name, name_mapping_table, type):
 #        2. The interrupt button to stop the inference
 #        3. real time inference strealit: 0.5(s), cv2: 0.01(s) 
 #
+frame_queue = queue.Queue(maxsize=10)
+result_queue = queue.Queue(maxsize=10)
+ui_queue = queue.Queue(maxsize=3)
+
+def reader_thread(cap, frame_queue):
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            frame_queue.put(None)
+            break
+        frame_queue.put(frame)
+
+def infer_thread(model, frame_queue, result_queue, orig_size, device):
+    while True:
+        frame = frame_queue.get()
+        if frame is None:
+            result_queue.put(None)
+            break
+        # Preprocess
+        frame_resized = cv2.resize(frame, (640, 640), interpolation=cv2.INTER_LINEAR)
+        im_data = (torch.from_numpy(frame_resized).permute(2, 0, 1).float() / 255.0).unsqueeze(0).to(device)
+        # Inference
+        output = model(im_data, orig_size)
+        result_queue.put((frame, output))
+
+def writer_thread(result_queue, output_video, draw, total_frames, progress_bar, frame_placeholder, preview_size, lang):
+    current_frame = 1
+    while True:
+        item = result_queue.get()
+        if item is None:
+            break
+        frame, output = item
+        labels, boxes, scores = output
+        detect_frame, box_count = draw([frame], labels, boxes, scores, 0.35)
+        output_video.write(detect_frame)
+        # Optionally update UI here, but not every frame
+        current_frame += 1
+        progress = current_frame / total_frames
+        #progress_bar.progress(progress, text=("%.2f" % round(100*current_frame/total_frames, 2) + "%"))  # Update progress bar
+        print(f"Progress: {current_frame} / {total_frames}")
+        frame_display = cv2.resize(detect_frame, preview_size, interpolation=cv2.INTER_LINEAR)
+        frame_rgb = cv2.cvtColor(frame_display, cv2.COLOR_BGR2RGB)
+        ui_queue.put((frame_rgb, progress, current_frame))
+
 def infer(args, model, name, format):
 
     detect_annotation = []
     if st.session_state.infer_correct:
         if args.video: # Add classify video type
-            start_time = time.time()
+            init_time = time.time()
             cap = ffmpegcv.VideoCaptureNV(args.imfile)
             frame_placeholder = st.empty()
 
@@ -324,55 +370,78 @@ def infer(args, model, name, format):
             # frame_placeholder = st.empty()
             ret, frame = cap.read()
             orig_size = torch.tensor([width, height])[None].to(args.device)
-            current_frame = 1
-            while cap.isOpened():
-                t0 = time.perf_counter()
-                ret, frame = cap.read()
-                t1 = time.perf_counter()
-                if not ret:
-                    break
+            t1 = threading.Thread(target=reader_thread, args=(cap, frame_queue))
+            t2 = threading.Thread(target=infer_thread, args=(model, frame_queue, result_queue, orig_size, args.device))
+            t3 = threading.Thread(target=writer_thread, args=(result_queue, output_video, draw, total_frames, progress_bar, frame_placeholder, preview_size, lang))
 
-                # Preprocessing
-                t2 = time.perf_counter()
-                frame_resized = cv2.resize(frame, (640, 640), interpolation=cv2.INTER_LINEAR)
-                im_data = (torch.from_numpy(frame_resized).permute(2, 0, 1).float() / 255.0).unsqueeze(0).to(args.device)
-                t3 = time.perf_counter()
+            start_time = time.time()
+            t1.start()
+            t2.start()
+            t3.start()
 
-                # Model inference
-                output = model(im_data, orig_size)
-                t4 = time.perf_counter()
+            while t3.is_alive():
+                try:
+                    frame_rgb, progress, current_frame = ui_queue.get(timeout=0.1)
+                    frame_placeholder.image(frame_rgb, caption=lang.get("on_time_infer_result"), use_container_width=True)
+                    progress_bar.progress(progress, text=("%.2f" % round(100*current_frame/total_frames, 2) + "%"))
+                except queue.Empty:
+                    pass
+                # Optionally add a small sleep to avoid busy-waiting
+                #time.sleep(0.05)
 
-                # Postprocessing/drawing
-                labels, boxes, scores = output
-                detect_frame, box_count = draw([frame], labels, boxes, scores, 0.35)
-                t5 = time.perf_counter()
+            t1.join()
+            t2.join()
+            t3.join()
 
-                # Streamlit UI update
-                frame_pil = Image.fromarray(cv2.cvtColor(cv2.resize(np.array(detect_frame), preview_size, interpolation=cv2.INTER_LINEAR), cv2.COLOR_BGR2RGB))
-                frame_placeholder.image(frame_pil, caption=lang.get("on_time_infer_result"), use_container_width=True, channels = "RGB")
-                t6 = time.perf_counter()
+            # while cap.isOpened():
+            #     #t0 = time.perf_counter()
+            #     ret, frame = cap.read()
+            #     #t1 = time.perf_counter()
+            #     if not ret:
+            #         break
 
-                # Output video write
-                output_video.write(detect_frame)
-                t7 = time.perf_counter()
+            #     # Preprocessing
+            #     #t2 = time.perf_counter()
+            #     frame_resized = cv2.resize(frame, (640, 640), interpolation=cv2.INTER_LINEAR)
+            #     im_data = (torch.from_numpy(frame_resized).permute(2, 0, 1).float() / 255.0).unsqueeze(0).to(args.device)
+            #     #t3 = time.perf_counter()
 
-                # Print timings
-                print(f"Read: {t1-t0:.3f}s, Pre: {t3-t2:.3f}s, Infer: {t4-t3:.3f}s, Draw: {t5-t4:.3f}s, UI: {t6-t5:.3f}s, Write: {t7-t6:.3f}s")
+            #     # Model inference
+            #     output = model(im_data, orig_size)
+            #     #t4 = time.perf_counter()
 
-                # Update the progress bar
-                current_frame += 1
-                progress = current_frame / total_frames
-                progress_bar.progress(progress, text=("%.2f" % round(100*current_frame/total_frames, 2) + "%"))  # Update progress bar
-                print(f"Progress: {current_frame} / {total_frames}")
+            #     # Postprocessing/drawing
+            #     labels, boxes, scores = output
+            #     detect_frame, box_count = draw([frame], labels, boxes, scores, 0.35)
+            #     #t5 = time.perf_counter()
 
-                # Collect the frame that is detected
-                if  box_count > 0:
-                    detect_annotation.append(current_frame)
+            #     # Streamlit UI update
+            #     #frame_pil = Image.fromarray(cv2.cvtColor(cv2.resize(np.array(detect_frame), preview_size, interpolation=cv2.INTER_LINEAR), cv2.COLOR_BGR2RGB))
+            #     #frame_placeholder.image(frame_pil, caption=lang.get("on_time_infer_result"), use_container_width=True, channels = "RGB")
+            #     #t6 = time.perf_counter()
+
+            #     # Output video write
+            #     output_video.write(detect_frame)
+            #     #t7 = time.perf_counter()
+
+            #     # Print timings
+            #     #print(f"Read: {t1-t0:.3f}s, Pre: {t3-t2:.3f}s, Infer: {t4-t3:.3f}s, Draw: {t5-t4:.3f}s, UI: {t6-t5:.3f}s, Write: {t7-t6:.3f}s")
+
+            #     # Update the progress bar
+            #     #current_frame += 1
+            #     #progress = current_frame / total_frames
+            #     #progress_bar.progress(progress, text=("%.2f" % round(100*current_frame/total_frames, 2) + "%"))  # Update progress bar
+            #     #print(f"Progress: {current_frame} / {total_frames}")
+
+            #     # Collect the frame that is detected
+            #     if  box_count > 0:
+            #         detect_annotation.append(current_frame)
             cap.release()
             output_video.release()
             end_time = time.time()
-            elapsed_time = end_time - start_time
-            st.info(lang.get("fps").format(fps=round(total_frames/elapsed_time, 2)) + ", " + lang.get("inference_time").format(elapsed_time=round(elapsed_time, 2)))
+            elapsed_time = end_time - init_time
+            infer_time = end_time - start_time
+            st.info(lang.get("fps").format(fps=round(total_frames/elapsed_time, 2)) + ", " + lang.get("inference_time").format(infer_time=round(infer_time, 2)) + ", " + lang.get("elapsed_time").format(elapsed_time=round(elapsed_time, 2)))
 
         else:
             start_time = time.time()
