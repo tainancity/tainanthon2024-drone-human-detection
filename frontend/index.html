@@ -31,6 +31,13 @@
         <div class="inference-section">
             <button id="inferBtn" disabled>開始推理</button>
             <div id="inferenceStatus" class="status-message"></div>
+            <div id="inferenceProgressBarContainer" style="display: none; margin-top: 20px;">
+                <h3 id="currentFileInference"></h3>
+                <div class="progress-bar-wrapper">
+                    <div class="progress-bar-fill" id="inferenceProgressBar" style="width: 0%;"></div>
+                    <span class="progress-bar-text" id="inferenceProgressText">0%</span>
+                </div>
+            </div>
             <div id="inferenceResults" class="results-display">
                 </div>
         </div>
@@ -47,6 +54,7 @@
         </div>
     </div>
 
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.0/socket.io.min.js"></script>
     <script src="script.js"></script>
 </body>
 </html>

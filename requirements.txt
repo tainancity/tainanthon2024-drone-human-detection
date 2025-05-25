@@ -9,3 +9,6 @@ transformers
 yt-dlp
 flask
 flask-cors
+Flask-SocketIO 
+python-socketio
+eventlet

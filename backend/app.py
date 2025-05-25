@@ -4,7 +4,9 @@ import uuid
 import json
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
+from flask_socketio import SocketIO, emit
 from werkzeug.utils import secure_filename
+import eventlet
 import torch
 import torchvision.transforms as T
 import cv2
@@ -22,6 +24,11 @@ from rtdetrv2.tools.infer import InitArgs, draw, initModel
 
 app = Flask(__name__)
 CORS(app) 
+
+# 初始化 SocketIO。async_mode 可以選擇 'eventlet', 'gevent' 或 None (默認 eventlet)
+# 如果您沒有額外安裝 eventlet 或 gevent，使用 async_mode=None 會自動選擇最合適的
+# 但如果想確保非同步，推薦安裝 eventlet (pip install eventlet)
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet') # 設置 CORS 允許所有來源
 
 app.config['UPLOAD_FOLDER'] = 'inputFile'
 app.config['OUTPUT_FOLDER'] = 'outputFile'
@@ -54,7 +61,7 @@ def serve_output_file(filename):
     return send_file(os.path.join(app.config['OUTPUT_FOLDER'], filename))
 
 print(f"DEBUG: Flask App Current Working Directory: {os.getcwd()}")
-print(f"DEBUG: Flask static_folder path: {os.path.abspath(app.static_folder)}")
+# print(f"DEBUG: Flask static_folder path: {os.path.abspath(app.static_folder)}")
 
 # 模擬 session_state，在真實生產環境應使用更持久的儲存（如資料庫）
 # 或者每個請求獨立處理，避免共享狀態
@@ -145,7 +152,7 @@ def make_log(annotations, fps, file_name_base):
     return log_path
 
 # --- 模型推斷邏輯 (從 main.py 的 infer 函數提取並修改) ---
-def perform_inference(file_path, is_video, output_base_dir, uuid_name):
+def perform_inference(sid, file_path, is_video, output_base_dir, uuid_name):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
     # 根據是否為影片，調整 output_path
@@ -166,11 +173,13 @@ def perform_inference(file_path, is_video, output_base_dir, uuid_name):
         cap = cv2.VideoCapture(file_path) 
         if not cap.isOpened():
             print(f"Error: Could not open video {file_path}")
+            socketio.emit('inference_error', {'message': f'Failed to open video: {file_path}'}, room=sid)
             return [], None, "Error: Could not open video."
 
         fps = cap.get(cv2.CAP_PROP_FPS)
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         
         # 輸出影片的暫存路徑
         output_video_path = os.path.join(output_dir_for_file, uuid_name)
@@ -198,14 +207,11 @@ def perform_inference(file_path, is_video, output_base_dir, uuid_name):
                 t4 = time.perf_counter()
 
                 # Postprocessing/drawing
-                #im_pil = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))  # <-- Add this line
                 labels, boxes, scores = output
                 detect_frame, box_count = draw([frame], labels, boxes, scores, 0.35)
                 frame_out = cv2.cvtColor(np.array(detect_frame), cv2.COLOR_RGB2BGR)
                 t5 = time.perf_counter()
 
-                # Streamlit UI update
-                #frame_display = 
                 #frame_rgb = cv2.cvtColor(frame_display, cv2.COLOR_BGR2RGB)
                 frame_pil = Image.fromarray(cv2.resize(frame_out, (800, 600), interpolation=cv2.INTER_LINEAR))
                 t6 = time.perf_counter()
@@ -216,6 +222,12 @@ def perform_inference(file_path, is_video, output_base_dir, uuid_name):
 
                 # Print timings
                 print(f"Read: {t1-t0:.3f}s, Pre: {t3-t2:.3f}s, Infer: {t4-t3:.3f}s, Draw: {t5-t4:.3f}s, UI: {t6-t5:.3f}s, Write: {t7-t6:.3f}s")
+
+                # Progress bar
+                current_frame += 1
+                progress_percent = int((current_frame / total_frames) * 100)
+                socketio.emit('inference_progress', {'progress': progress_percent, 'filename': uuid_name}, room=sid)
+                eventlet.sleep(0)
 
                 # Collect the frame that is detected
                 if  box_count > 0:
@@ -228,6 +240,7 @@ def perform_inference(file_path, is_video, output_base_dir, uuid_name):
     else: # Image
         img = cv2.imread(file_path)
         if img is None:
+            socketio.emit('inference_error', {'message': f'Failed to read image: {file_path}'}, room=sid)
             return [], None, "Error: Could not read image."
             
         start_time = time.time()
@@ -245,6 +258,9 @@ def perform_inference(file_path, is_video, output_base_dir, uuid_name):
         end_time = time.time()
         elapsed_time = end_time - start_time
         print(f"Image inference time: {elapsed_time:.2f} seconds")
+
+        socketio.emit('inference_progress', {'progress': 100, 'filename': uuid_name}, room=sid)
+        eventlet.sleep(0)
 
         return detect_annotation, output_image_path, None
 
@@ -316,6 +332,112 @@ def upload_file():
             })
 
     return jsonify({"success": True, "results": uploaded_results})
+
+@socketio.on('connect')
+def test_connect():
+    print('Client connected:', request.sid)
+    emit('my response', {'data': 'Connected'})
+
+@socketio.on('disconnect')
+def test_disconnect():
+    print('Client disconnected:', request.sid)
+
+@socketio.on('start_inference_batch') # 接收前端發送的批次推理請求
+def handle_start_inference_batch():
+    global uploaded_files_info, detect_annotations, name_mapping_table
+    
+    sid = request.sid # 獲取當前連接的 session ID
+
+    if not uploaded_files_info:
+        socketio.emit('inference_error', {'message': 'No files uploaded for inference.'}, room=sid)
+        return
+
+    inference_results = []
+    
+    # 這裡使用 list(uploaded_files_info.items()) 複製一份，防止在迭代時被修改
+    files_to_infer = list(uploaded_files_info.items()) 
+    
+    # 發送批次推理開始事件
+    socketio.emit('batch_inference_started', {'total_files': len(files_to_infer)}, room=sid)
+
+    for i, (uuid_name, file_info) in enumerate(files_to_infer):
+        original_name = file_info['original_name']
+        file_path = file_info['path']
+        is_video = file_info['is_video']
+        
+        # 發送當前檔案的推理開始事件
+        socketio.emit('file_inference_started', {'filename': original_name, 'index': i}, room=sid)
+
+        if uuid_name in detect_annotations and detect_annotations[uuid_name] is not None:
+            original_name_recovered, relative_output_path_for_frontend = recover_name(
+                uuid_name, name_mapping_table, "video" if is_video else "photo"
+            )
+
+            log_path = None
+            if original_name_recovered and is_video:
+                log_path = os.path.join(app.config['LOG_FOLDER'], original_name_recovered.split('.')[0] + '.txt')
+
+            result_data = {
+                "original_name": original_name,
+                "uuid_name": uuid_name,
+                "is_video": is_video,
+                "success": True,
+                "message": f"File '{original_name}' already inferred.",
+                "output_path_relative": relative_output_path_for_frontend,
+                "log_path": log_path,
+                "index": i # 添加索引方便前端對應
+            }
+            inference_results.append(result_data)
+            # 對於已推斷過的檔案，直接發送進度 100% 和完成事件
+            socketio.emit('inference_progress', {'progress': 100, 'filename': uuid_name}, room=sid)
+            socketio.emit('file_inference_completed', result_data, room=sid)
+            continue
+
+        start_time = time.time()
+        # perform_inference 現在需要 sid 來發送進度更新
+        annotations, output_file_absolute_path, error_msg = perform_inference(
+            sid, file_path, is_video, app.config['OUTPUT_FOLDER'], uuid_name
+        )
+        end_time = time.time()
+
+        if error_msg:
+            result_data = {
+                "original_name": original_name,
+                "uuid_name": uuid_name,
+                "success": False,
+                "message": f"Inference failed for '{original_name}': {error_msg}",
+                "index": i # 添加索引方便前端對應
+            }
+            inference_results.append(result_data)
+            socketio.emit('inference_error', result_data, room=sid) # 發送錯誤事件
+        else:
+            detect_annotations[uuid_name] = annotations
+
+            original_name_recovered, relative_output_path_for_frontend = recover_name(
+                uuid_name, name_mapping_table, "video" if is_video else "photo"
+            )
+
+            log_path = None
+            if is_video and original_name_recovered:
+                cap = cv2.VideoCapture(file_path)
+                fps = cap.get(cv2.CAP_PROP_FPS)
+                cap.release()
+                log_path = make_log(annotations, fps, original_name_recovered.split('.')[0])
+
+            result_data = {
+                "original_name": original_name,
+                "uuid_name": uuid_name,
+                "is_video": is_video,
+                "success": True,
+                "message": f"Inference completed for '{original_name}' in {end_time - start_time:.2f}s.",
+                "output_path_relative": relative_output_path_for_frontend,
+                "log_path": log_path,
+                "index": i # 添加索引方便前端對應
+            }
+            inference_results.append(result_data)
+            socketio.emit('file_inference_completed', result_data, room=sid) # 發送單個檔案完成事件
+    
+    socketio.emit('batch_inference_completed', {'results': inference_results}, room=sid) # 發送批次推理完成事件
 
 @app.route('/infer', methods=['POST'])
 def start_inference():
@@ -446,4 +568,7 @@ def cleanup_files():
         return jsonify({"success": False, "message": f"Cleanup failed: {str(e)}"}), 500
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    print(f"DEBUG: Flask App Current Working Directory: {os.getcwd()}")
+    # print(f"DEBUG: Flask static_folder path: {os.path.abspath(app.static_folder)}") # 這行會報錯因為 app.static_folder 可能為 None
+    # 運行 Flask-SocketIO 應用，而不是 app.run()
+    socketio.run(app, debug=True, port=5000, allow_unsafe_werkzeug=True) # allow_unsafe_werkzeug 僅用於開發環境

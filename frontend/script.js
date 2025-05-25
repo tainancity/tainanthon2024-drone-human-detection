@@ -19,7 +19,138 @@ document.addEventListener('DOMContentLoaded', () => {
     const cleanupBtn = document.getElementById('cleanupBtn');
     const cleanupStatus = document.getElementById('cleanupStatus');
 
+    const inferenceProgressBarContainer = document.getElementById('inferenceProgressBarContainer');
+    const inferenceProgressBar = document.getElementById('inferenceProgressBar');
+    const inferenceProgressText = document.getElementById('inferenceProgressText');
+    const currentFileInference = document.getElementById('currentFileInference');
+
     let uploadedFilesInfo = [];
+    let socket; // 聲明 socket 變數
+
+    function initSocketIO() {
+        // 確保連接到您的 Flask SocketIO 伺服器
+        socket = io('http://127.0.0.1:5000'); 
+
+        socket.on('connect', () => {
+            console.log('Connected to Socket.IO server!');
+            displayStatus(inferenceStatus, '已連接到伺服器。', 'info');
+        });
+
+        socket.on('disconnect', () => {
+            console.log('Disconnected from Socket.IO server.');
+            displayStatus(inferenceStatus, '已斷開與伺服器的連接。', 'error');
+        });
+
+        socket.on('connect_error', (error) => {
+            console.error('Socket.IO connection error:', error);
+            displayStatus(inferenceStatus, `連接伺服器失敗: ${error.message}`, 'error');
+        });
+
+        // 監聽進度更新事件
+        socket.on('inference_progress', (data) => {
+            console.log('Progress:', data);
+            const progress = data.progress;
+            const filename = data.filename; // 這裡的 filename 是 UUID 名稱
+            
+            // 找到原始檔名以便顯示
+            const originalFile = uploadedFilesInfo.find(f => f.uuid_name === filename);
+            const originalFileName = originalFile ? originalFile.original_name : filename;
+
+            inferenceProgressBar.style.width = `${progress}%`;
+            inferenceProgressText.textContent = `${progress}%`;
+            currentFileInference.textContent = `正在推理: ${originalFileName} (${progress}%)`;
+            inferenceProgressBarContainer.style.display = 'block'; // 顯示進度條
+
+            // 如果進度是 100%，暫時將進度條文本顏色變為黑色，表示完成
+            if (progress === 100) {
+                inferenceProgressText.style.color = '#333'; 
+            } else {
+                inferenceProgressText.style.color = 'white'; // 保持進度文本在填充區塊為白色
+            }
+        });
+
+        // 監聽批次推理開始事件
+        socket.on('batch_inference_started', (data) => {
+            displayStatus(inferenceStatus, `開始推理 ${data.total_files} 個檔案...`, 'info');
+            // 重置進度條
+            inferenceProgressBar.style.width = '0%';
+            inferenceProgressText.textContent = '0%';
+            currentFileInference.textContent = '';
+            inferenceProgressBarContainer.style.display = 'block';
+            inferBtn.disabled = true; // 禁用推理按鈕
+        });
+
+        // 監聽單個檔案推理開始事件
+        socket.on('file_inference_started', (data) => {
+            displayStatus(inferenceStatus, `正在處理檔案 ${data.index + 1} / ${uploadedFilesInfo.length}: ${data.filename}...`, 'info');
+            inferenceProgressBar.style.width = '0%';
+            inferenceProgressText.textContent = '0%';
+            currentFileInference.textContent = `正在推理: ${data.filename} (0%)`;
+        });
+
+        // 監聽單個檔案推理完成事件
+        socket.on('file_inference_completed', (result) => {
+            // console.log('File inference completed:', result);
+            displayStatus(inferenceStatus, `檔案 ${result.original_name} 推理完成！`, 'success');
+            // 將結果添加到頁面
+            addInferenceResultToDisplay(result);
+        });
+
+        // 監聽批次推理完成事件
+        socket.on('batch_inference_completed', (data) => {
+            displayStatus(inferenceStatus, '所有檔案推理完成！', 'success');
+            inferenceProgressBarContainer.style.display = 'none'; // 隱藏進度條
+            downloadOutputZipBtn.disabled = false;
+            downloadLogZipBtn.disabled = false;
+            inferBtn.disabled = false; // 重新啟用推理按鈕
+            
+        });
+
+        // 監聽錯誤事件
+        socket.on('inference_error', (error) => {
+            console.error('Inference error from server:', error);
+            displayStatus(inferenceStatus, `推理過程中發生錯誤: ${error.message}`, 'error');
+            inferenceProgressBarContainer.style.display = 'none'; // 隱藏進度條
+            inferBtn.disabled = false; // 重新啟用推理按鈕
+        });
+    }
+
+    // 將顯示推理結果的邏輯獨立出來
+    function addInferenceResultToDisplay(result) {
+        const itemDiv = document.createElement('div');
+        itemDiv.className = 'inference-item';
+        itemDiv.innerHTML = `<h3>${result.original_name}</h3>`;
+
+        if (result.success) {
+            itemDiv.innerHTML += `<p style="color: green;">${result.message}</p>`;
+            if (result.output_path_relative) {
+                const staticOutputUrl = `http://127.0.0.1:5000/static_output/`;
+                const displayPath = staticOutputUrl + result.output_path_relative;
+
+                console.log("Inferred Media URL:", displayPath);
+
+                let mediaElement;
+                if (result.is_video) {
+                    mediaElement = document.createElement('video');
+                    mediaElement.controls = true;
+                    mediaElement.autoplay = false;
+                    mediaElement.loop = false;
+                    mediaElement.muted = true;
+                } else {
+                    mediaElement = document.createElement('img');
+                }
+                mediaElement.src = displayPath;
+                mediaElement.alt = "Inferred Result";
+                itemDiv.appendChild(mediaElement);
+            }
+            if (result.log_path) {
+                itemDiv.innerHTML += `<p>日誌檔路徑: ${result.log_path.replace(/\\/g, '/')}</p>`;
+            }
+        } else {
+            itemDiv.innerHTML += `<p style="color: red;">推理失敗: ${result.message}</p>`;
+        }
+        inferenceResults.appendChild(itemDiv);
+    }
 
     function isVideoFile(fileName) {
         const videoFormats = ['mp4', 'mov', 'avi', 'MP4', 'MOV', 'AVI'];
@@ -165,72 +296,18 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     inferBtn.addEventListener('click', async () => {
-        // ... (省略前面判斷和狀態顯示的程式碼) ...
-
-        try {
-            const response = await fetch('http://127.0.0.1:5000/infer', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({})
-            });
-            const data = await response.json();
-
-            if (data.success) {
-                displayStatus(inferenceStatus, '模型推理完成！', 'success');
-                downloadOutputZipBtn.disabled = false;
-                downloadLogZipBtn.disabled = false;
-
-                data.results.forEach(result => {
-                    const itemDiv = document.createElement('div');
-                    itemDiv.className = 'inference-item';
-                    itemDiv.innerHTML = `<h3>${result.original_name}</h3>`;
-
-                    if (result.success) {
-                        itemDiv.innerHTML += `<p style="color: green;">${result.message}</p>`;
-                        if (result.output_path_relative) { // 使用新的鍵名
-                            // 直接拼接後端返回的相對路徑。
-                            // Flask 的 send_from_directory 會處理路徑分隔符。
-                            const staticOutputUrl = `http://127.0.0.1:5000/static_output/`;
-                            
-                            // 這裡我們直接使用後端傳來的 output_path_relative
-                            // 因為後端現在也知道要返回相對於 output_folder 的路徑，
-                            // 並且 send_file 會處理好斜線問題
-                            const displayPath = staticOutputUrl + result.output_path_relative;
-
-                            console.log("Inferred Media URL:", displayPath); // 調試輸出
-
-                            let mediaElement;
-                            if (result.is_video) { // 使用後端傳來的 is_video 判斷
-                                mediaElement = document.createElement('video');
-                                mediaElement.controls = true;
-                                mediaElement.autoplay = true;
-                                mediaElement.loop = true;
-                                mediaElement.muted = true;
-                            } else {
-                                mediaElement = document.createElement('img');
-                            }
-                            mediaElement.src = displayPath;
-                            mediaElement.alt = "Inferred Result";
-                            itemDiv.appendChild(mediaElement);
-                        }
-                        if (result.log_path) {
-                            itemDiv.innerHTML += `<p>日誌檔路徑: ${result.log_path.replace(/\\/g, '/')}</p>`;
-                        }
-                    } else {
-                        itemDiv.innerHTML += `<p style="color: red;">推理失敗: ${result.message}</p>`;
-                    }
-                    inferenceResults.appendChild(itemDiv);
-                });
-
-            } else {
-                displayStatus(inferenceStatus, `推理失敗: ${data.message}`, 'error');
-            }
-        } catch (error) {
-            displayStatus(inferenceStatus, `推理錯誤: ${error.message}`, 'error');
-            console.error('Inference error:', error);
+        if (uploadedFilesInfo.length === 0) {
+            displayStatus(inferenceStatus, '請先上傳檔案。', 'error');
+            return;
         }
+        // 清空之前的結果
+        inferenceResults.innerHTML = '';
+        inferBtn.disabled = true; // 禁用推理按鈕
+        downloadOutputZipBtn.disabled = true;
+        downloadLogZipBtn.disabled = true;
+        
+        // 透過 SocketIO 發送啟動批次推理的事件
+        socket.emit('start_inference_batch');
     });
 
     downloadOutputZipBtn.addEventListener('click', () => {
@@ -262,6 +339,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 downloadLogZipBtn.disabled = true;
                 fileInput.value = '';
                 inferBtn.disabled = true;
+                // 隱藏進度條
+                inferenceProgressBarContainer.style.display = 'none';
             } else {
                 displayStatus(cleanupStatus, `清除失敗: ${data.message}`, 'error');
             }
@@ -273,4 +352,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     displayStatus(fileSelectionStatus, '請選擇檔案...', 'info');
     selectedPreviewsContainer.style.display = 'none';
+
+    // 頁面載入時初始化 Socket.IO
+    initSocketIO();
 });
