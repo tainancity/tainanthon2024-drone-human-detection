@@ -2,6 +2,9 @@ import os
 import shutil
 import uuid
 import json
+import queue
+import threading
+import base64
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 from flask_socketio import SocketIO, emit
@@ -36,6 +39,10 @@ app.config['MAX_CONTENT_LENGTH'] = 1000 * 1024 * 1024  # 16 MB max upload size
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 os.makedirs(app.config['OUTPUT_FOLDER'], exist_ok=True)
 os.makedirs(app.config['LOG_FOLDER'], exist_ok=True)
+
+frame_queue = queue.Queue(maxsize=10)
+result_queue = queue.Queue(maxsize=10)
+ui_queue = queue.Queue(maxsize=3)
 
 # 新增：用於提供已上傳的原始檔案 (inputFile)
 @app.route('/static_input/<path:filename>')
@@ -129,8 +136,52 @@ def make_log(annotations, fps, file_name_base):
     with open(log_path, 'w') as f:
         f.write(f"Detected people frames for {file_name_base}:\n")
         for i in annotations:
-            f.write(f"{i/fps:.2f}sec\n")
+            f.write(f"{i*fps:2f}sec\n")
     return log_path
+
+def reader_thread(cap, frame_queue):
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            frame_queue.put(None)
+            break
+        frame_queue.put(frame)
+
+def infer_thread(model, frame_queue, result_queue, orig_size, device):
+    while True:
+        frame = frame_queue.get()
+        if frame is None:
+            result_queue.put(None)
+            break
+        # Preprocess
+        frame_resized = cv2.resize(frame, (640, 640), interpolation=cv2.INTER_LINEAR)
+        im_data = (torch.from_numpy(frame_resized).permute(2, 0, 1).float() / 255.0).unsqueeze(0).to(device)
+        # Inference
+        output = model(im_data, orig_size)
+        result_queue.put((frame, output))
+
+def writer_thread(result_queue, output_video, draw, total_frames, frame_placeholder, preview_size, lang, uuid_name, sid, detect_annotations):
+    current_frame = 0
+    while True:
+        item = result_queue.get()
+        if item is None:
+            break
+        frame, output = item
+        labels, boxes, scores = output
+        detect_frame, box_count = draw([frame], labels, boxes, scores, 0.35)
+        output_video.write(detect_frame)
+        # Optionally update UI here, but not every frame
+        current_frame += 1
+        progress = current_frame / total_frames
+        display_frame = cv2.resize(detect_frame, preview_size, interpolation=cv2.INTER_LINEAR)
+
+        _, buffer = cv2.imencode('.jpg', display_frame)
+        encoded_image = base64.b64encode(buffer).decode('utf-8')
+
+        if box_count > 0:
+            detect_annotations.append(current_frame / total_frames)
+
+        ui_queue.put((encoded_image, progress, current_frame))
 
 # --- 模型推斷邏輯 (從 main.py 的 infer 函數提取並修改) ---
 def perform_inference(sid, file_path, is_video, output_base_dir, uuid_name):
@@ -161,6 +212,7 @@ def perform_inference(sid, file_path, is_video, output_base_dir, uuid_name):
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         orig_size = torch.tensor([width, height])[None].to(args.device)
+        preview_size = (800, height * 800 // width)
         
         # 輸出影片的暫存路徑
         output_video_path = os.path.join(output_dir_for_file, uuid_name)
@@ -168,51 +220,31 @@ def perform_inference(sid, file_path, is_video, output_base_dir, uuid_name):
         output_video = cv2.VideoWriter(output_video_path, fourcc, fps, (width, height))
 
         current_frame = 0
-        while cap.isOpened():
-                if interrupt_requests.get(sid): # 檢查當前 sid 是否請求中斷
-                    print(f"Inference interrupted for {uuid_name} by client {sid}")
-                    socketio.emit('inference_interrupted', {'message': f'Inference interrupted for {uuid_name}.', 'uuid_name': uuid_name}, room=sid)
-                    cap.release()
-                    output_video.release()
-                    # 在中斷時清除該 sid 的中斷標誌
-                    interrupt_requests[sid] = False 
-                    return [], None, "Inference interrupted" # 返回中斷狀態
 
-                ret, frame = cap.read()
-                if not ret:
-                    break
+        reader_th = threading.Thread(target=reader_thread, args=(cap, frame_queue))
+        infer_th = threading.Thread(target=infer_thread, args=(model, frame_queue, result_queue, orig_size, args.device))
+        writer_th = threading.Thread(target=writer_thread, args=(result_queue, output_video, draw, total_frames, None, preview_size, lang, uuid_name, sid, detect_annotation))
 
-                # Preprocessing
-                frame_resized = cv2.resize(frame, (640, 640), interpolation=cv2.INTER_LINEAR)
-                im_data = (torch.from_numpy(frame_resized).permute(2, 0, 1).float() / 255.0).unsqueeze(0).to(args.device)
+        start_time = time.time()
+        reader_th.start()
+        infer_th.start()
+        writer_th.start()
 
-                # Model inference
-                output = model(im_data, orig_size)
-
-                # Postprocessing/drawing
-                labels, boxes, scores = output
-                detect_frame, box_count = draw([frame], labels, boxes, scores, 0.35)
-                # frame_out = cv2.cvtColor(np.array(detect_frame), cv2.COLOR_RGB2BGR)
-
-                # frame_rgb = cv2.cvtColor(frame_display, cv2.COLOR_BGR2RGB)
-                # frame_pil = Image.fromarray(cv2.resize(frame_out, (800, 600), interpolation=cv2.INTER_LINEAR))
-
-                # Output video write
-                output_video.write(detect_frame)
-
-                # Progress bar
-                current_frame += 1
-                progress_percent = int((current_frame / total_frames) * 100)
-                socketio.emit('inference_progress', {'progress': progress_percent, 'filename': uuid_name}, room=sid)
-                eventlet.sleep(0)
-
-                # Collect the frame that is detected
-                if  box_count > 0:
-                    detect_annotation.append(current_frame)
+        while writer_th.is_alive():
+            try:
+                frame_rgb, progress, current_frame = ui_queue.get(timeout=0.1)
+                socketio.emit('inference_progress', {'progress': int(progress*100), 'filename': uuid_name, 'frame':frame_rgb}, room=sid)
+                eventlet.sleep(0) 
+            except queue.Empty:
+                pass
+        
+        reader_th.join()
+        infer_th.join()
+        writer_th.join()
         
         cap.release()
         output_video.release()
-        return detect_annotation, output_video_path, None
+        return detect_annotation, output_video_path, None, total_frames
 
     else: # Image
         img = cv2.imread(file_path)
@@ -245,7 +277,7 @@ def perform_inference(sid, file_path, is_video, output_base_dir, uuid_name):
         socketio.emit('inference_progress', {'progress': 100, 'filename': uuid_name}, room=sid)
         eventlet.sleep(0)
 
-        return detect_annotation, output_image_path, None
+        return detect_annotation, output_image_path, None, 1 # 對於圖片，總幀數設為 1
 
 # --- Flask API 接口 ---
 
@@ -385,7 +417,7 @@ def handle_start_inference_batch():
 
         start_time = time.time()
         # perform_inference 現在需要 sid 來發送進度更新
-        annotations, output_file_absolute_path, error_msg = perform_inference(
+        annotations, output_file_absolute_path, error_msg, total_frame = perform_inference(
             sid, file_path, is_video, app.config['OUTPUT_FOLDER'], uuid_name
         )
         end_time = time.time()
@@ -432,7 +464,7 @@ def handle_start_inference_batch():
                 "uuid_name": uuid_name,
                 "is_video": is_video,
                 "success": True,
-                "message": f"Inference completed for '{original_name}' in {end_time - start_time:.2f}s. FPS:{len(annotations)/(end_time - start_time):.2f}",
+                "message": f"Inference completed for '{original_name}' in {end_time - start_time:.2f}s. FPS:{total_frame/(end_time - start_time):.2f}",
                 "output_path_relative": relative_output_path_for_frontend,
                 "log_path": log_path,
                 "index": i # 添加索引方便前端對應

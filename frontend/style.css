@@ -124,6 +124,14 @@ button:disabled {
     margin-bottom: 10px;
 }
 
+#inferenceProgressBarContainer img { /* 選中插入到此容器中的 img */
+    margin: auto;
+    margin-top: 15px; /* 與進度條保持間距 */
+    border: 1px solid #ddd;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    border-radius: 5px;
+}
+
 .progress-bar-wrapper {
     width: 100%;
     background-color: #e0e0e0;

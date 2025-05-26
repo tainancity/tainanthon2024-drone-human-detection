@@ -24,6 +24,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const inferenceProgressText = document.getElementById('inferenceProgressText');
     const currentFileInference = document.getElementById('currentFileInference');
 
+    const liveInferenceImage = document.createElement('img');
+    liveInferenceImage.style.maxWidth = '100%'; // 限制預覽圖大小
+    liveInferenceImage.style.height = 'auto';
+    liveInferenceImage.style.display = 'none'; // 初始隱藏
+    liveInferenceImage.alt = 'Live Inference';
+    inferenceProgressBarContainer.appendChild(liveInferenceImage);
+
     let uploadedFilesInfo = [];
     let socket; // 聲明 socket 變數
 
@@ -48,9 +55,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // 監聽進度更新事件
         socket.on('inference_progress', (data) => {
-            console.log('Progress:', data);
+            console.log('Progress:', data.progress, 'Filename:', data.filename);
             const progress = data.progress;
             const filename = data.filename; // 這裡的 filename 是 UUID 名稱
+            const imageData = data.frame; // 這裡假設後端傳回 base64 編碼的圖像數據
             
             // 找到原始檔名以便顯示
             const originalFile = uploadedFilesInfo.find(f => f.uuid_name === filename);
@@ -64,8 +72,15 @@ document.addEventListener('DOMContentLoaded', () => {
             // 如果進度是 100%，暫時將進度條文本顏色變為黑色，表示完成
             if (progress === 100) {
                 inferenceProgressText.style.color = '#333'; 
+                liveInferenceImage.style.display = 'none'; // 隱藏預覽圖
             } else {
                 inferenceProgressText.style.color = 'white'; // 保持進度文本在填充區塊為白色
+                if (imageData) {
+                    liveInferenceImage.src = `data:image/jpeg;base64,${imageData}`;
+                    liveInferenceImage.style.display = 'block';
+                } else {
+                    liveInferenceImage.style.display = 'none'; // 如果沒有圖像數據，則隱藏
+                }
             }
         });
 
@@ -77,6 +92,7 @@ document.addEventListener('DOMContentLoaded', () => {
             inferenceProgressText.textContent = '0%';
             currentFileInference.textContent = '';
             inferenceProgressBarContainer.style.display = 'block';
+            liveInferenceImage.style.display = 'none'; // 隱藏預覽圖
             inferBtn.disabled = true; // 禁用推理按鈕
             interruptBtn.disabled = false;
         });
@@ -101,6 +117,7 @@ document.addEventListener('DOMContentLoaded', () => {
         socket.on('batch_inference_completed', (data) => {
             displayStatus(inferenceStatus, '所有檔案推理完成！', 'success');
             inferenceProgressBarContainer.style.display = 'none'; // 隱藏進度條
+            liveInferenceImage.style.display = 'none'; // 隱藏預覽圖
             downloadOutputZipBtn.disabled = false;
             downloadLogZipBtn.disabled = false;
             inferBtn.disabled = false; // 重新啟用推理按鈕
@@ -113,6 +130,7 @@ document.addEventListener('DOMContentLoaded', () => {
             console.error('Inference error from server:', error);
             displayStatus(inferenceStatus, `推理過程中發生錯誤: ${error.message}`, 'error');
             inferenceProgressBarContainer.style.display = 'none'; // 隱藏進度條
+            liveInferenceImage.style.display = 'none'; // 隱藏預覽圖
             inferBtn.disabled = false; // 重新啟用推理按鈕
             interruptBtn.disabled = true; // 禁用中斷按鈕
         });
@@ -122,6 +140,7 @@ document.addEventListener('DOMContentLoaded', () => {
             console.log('Inference interrupted:', data);
             displayStatus(inferenceStatus, `推理已中斷: ${data.message}`, 'info');
             inferenceProgressBarContainer.style.display = 'none'; // 隱藏進度條
+            liveInferenceImage.style.display = 'none'; // 隱藏預覽圖
             inferBtn.disabled = false; // 重新啟用開始推理按鈕
             interruptBtn.disabled = true; // 禁用中斷按鈕
             // 可選：為被中斷的檔案顯示特定的消息
@@ -352,6 +371,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 uploadStatus.innerHTML = '';
                 uploadedFilesDisplay.style.display = 'none';
                 inferSection.style.display = 'none';
+                liveInferenceImage.style.display = 'none'; // 隱藏預覽圖
                 downloadOutputZipBtn.disabled = true;
                 downloadLogZipBtn.disabled = true;
                 fileInput.value = '';
