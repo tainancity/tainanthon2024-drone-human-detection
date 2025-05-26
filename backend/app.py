@@ -47,7 +47,6 @@ def serve_output_file(filename):
     return send_file(os.path.join(app.config['OUTPUT_FOLDER'], filename))
 
 print(f"DEBUG: Flask App Current Working Directory: {os.getcwd()}")
-# print(f"DEBUG: Flask static_folder path: {os.path.abspath(app.static_folder)}")
 
 # 模擬 session_state，在真實生產環境應使用更持久的儲存（如資料庫）
 uploaded_files_info = {} # key: original_filename, value: {'uuid_name': ..., 'file_type': ...}
@@ -148,7 +147,6 @@ def perform_inference(sid, file_path, is_video, output_base_dir, uuid_name):
         args = InitArgs(file_path, False, output_dir_for_file, device)
         
     model = initModel(args)
-    
     detect_annotation = []
     
     if is_video:
@@ -162,6 +160,7 @@ def perform_inference(sid, file_path, is_video, output_base_dir, uuid_name):
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        orig_size = torch.tensor([width, height])[None].to(args.device)
         
         # 輸出影片的暫存路徑
         output_video_path = os.path.join(output_dir_for_file, uuid_name)
@@ -179,40 +178,27 @@ def perform_inference(sid, file_path, is_video, output_base_dir, uuid_name):
                     interrupt_requests[sid] = False 
                     return [], None, "Inference interrupted" # 返回中斷狀態
 
-                t0 = time.perf_counter()
                 ret, frame = cap.read()
-                t1 = time.perf_counter()
                 if not ret:
                     break
 
                 # Preprocessing
-                t2 = time.perf_counter()
                 frame_resized = cv2.resize(frame, (640, 640), interpolation=cv2.INTER_LINEAR)
-                im_data = torch.from_numpy(frame_resized).permute(2, 0, 1).float() / 255.0
-                im_data = im_data.unsqueeze(0).to(args.device)
-                orig_size = torch.tensor([frame.shape[1], frame.shape[0]])[None].to(args.device)
-                t3 = time.perf_counter()
+                im_data = (torch.from_numpy(frame_resized).permute(2, 0, 1).float() / 255.0).unsqueeze(0).to(args.device)
 
                 # Model inference
                 output = model(im_data, orig_size)
-                t4 = time.perf_counter()
 
                 # Postprocessing/drawing
                 labels, boxes, scores = output
                 detect_frame, box_count = draw([frame], labels, boxes, scores, 0.35)
-                frame_out = cv2.cvtColor(np.array(detect_frame), cv2.COLOR_RGB2BGR)
-                t5 = time.perf_counter()
+                # frame_out = cv2.cvtColor(np.array(detect_frame), cv2.COLOR_RGB2BGR)
 
-                #frame_rgb = cv2.cvtColor(frame_display, cv2.COLOR_BGR2RGB)
-                frame_pil = Image.fromarray(cv2.resize(frame_out, (800, 600), interpolation=cv2.INTER_LINEAR))
-                t6 = time.perf_counter()
+                # frame_rgb = cv2.cvtColor(frame_display, cv2.COLOR_BGR2RGB)
+                # frame_pil = Image.fromarray(cv2.resize(frame_out, (800, 600), interpolation=cv2.INTER_LINEAR))
 
                 # Output video write
                 output_video.write(detect_frame)
-                t7 = time.perf_counter()
-
-                # Print timings
-                print(f"Read: {t1-t0:.3f}s, Pre: {t3-t2:.3f}s, Infer: {t4-t3:.3f}s, Draw: {t5-t4:.3f}s, UI: {t6-t5:.3f}s, Write: {t7-t6:.3f}s")
 
                 # Progress bar
                 current_frame += 1
@@ -446,7 +432,7 @@ def handle_start_inference_batch():
                 "uuid_name": uuid_name,
                 "is_video": is_video,
                 "success": True,
-                "message": f"Inference completed for '{original_name}' in {end_time - start_time:.2f}s.",
+                "message": f"Inference completed for '{original_name}' in {end_time - start_time:.2f}s. FPS:{len(annotations)/(end_time - start_time):.2f}",
                 "output_path_relative": relative_output_path_for_frontend,
                 "log_path": log_path,
                 "index": i # 添加索引方便前端對應
@@ -455,85 +441,6 @@ def handle_start_inference_batch():
             socketio.emit('file_inference_completed', result_data, room=sid) # 發送單個檔案完成事件
     
     socketio.emit('batch_inference_completed', {'results': inference_results}, room=sid) # 發送批次推理完成事件
-
-@app.route('/infer', methods=['POST'])
-def start_inference():
-    global uploaded_files_info, detect_annotations, name_mapping_table
-
-    if not uploaded_files_info:
-        return jsonify({"success": False, "message": "No files uploaded for inference."}), 400
-
-    inference_results = []
-
-    for uuid_name, file_info in uploaded_files_info.items():
-        original_name = file_info['original_name']
-        file_path = file_info['path']
-        is_video = file_info['is_video']
-
-        # 這裡的邏輯需要調整，確保即使是已推斷過的，也能正確地返回相對路徑
-        # 如果 detect_annotations[uuid_name] 不為 None，表示已經推斷過
-        # 我們直接從 recover_name 獲取其最終的相對路徑
-        if uuid_name in detect_annotations and detect_annotations[uuid_name] is not None:
-            # 避免重複推斷，但仍返回正確的輸出路徑
-            original_name_recovered, relative_output_path_for_frontend = recover_name(
-                uuid_name, name_mapping_table, "video" if is_video else "photo"
-            )
-
-            log_path = None
-            if original_name_recovered and is_video:
-                log_path = os.path.join(app.config['LOG_FOLDER'], original_name_recovered.split('.')[0] + '.txt')
-
-            inference_results.append({
-                "original_name": original_name,
-                "uuid_name": uuid_name,
-                "is_video": is_video, # 新增這個，讓前端知道是圖片還是影片
-                "success": True,
-                "message": f"File '{original_name}' already inferred.",
-                "output_path_relative": relative_output_path_for_frontend, # 返回相對路徑
-                "log_path": log_path,
-            })
-            continue
-
-        start_time = time.time()
-        annotations, output_file_absolute_path, error_msg = perform_inference(
-            file_path, is_video, app.config['OUTPUT_FOLDER'], uuid_name
-        )
-        end_time = time.time()
-
-        if error_msg:
-            inference_results.append({
-                "original_name": original_name,
-                "uuid_name": uuid_name,
-                "success": False,
-                "message": f"Inference failed for '{original_name}': {error_msg}"
-            })
-        else:
-            detect_annotations[uuid_name] = annotations
-
-            # recover_name 會處理檔名恢復和資料夾重命名，並返回用於前端的相對路徑
-            original_name_recovered, relative_output_path_for_frontend = recover_name(
-                uuid_name, name_mapping_table, "video" if is_video else "photo"
-            )
-
-            log_path = None
-            if is_video and original_name_recovered:
-                # 獲取影片的 fps 用於 log
-                cap = cv2.VideoCapture(file_path)
-                fps = cap.get(cv2.CAP_PROP_FPS)
-                cap.release()
-                log_path = make_log(annotations, fps, original_name_recovered.split('.')[0])
-
-            inference_results.append({
-                "original_name": original_name,
-                "uuid_name": uuid_name,
-                "is_video": is_video, # 新增這個，讓前端知道是圖片還是影片
-                "success": True,
-                "message": f"Inference completed for '{original_name}' in {end_time - start_time:.2f}s.",
-                "output_path_relative": relative_output_path_for_frontend, # 返回相對路徑
-                "log_path": log_path,
-            })
-
-    return jsonify({"success": True, "results": inference_results})
 
 @app.route('/download_output_zip')
 def download_output_zip():

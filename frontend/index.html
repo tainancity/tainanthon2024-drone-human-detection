@@ -19,16 +19,11 @@
             <div id="uploadStatus" class="status-message"></div>
         </div>
 
-        <div id="selectedPreviewsContainer" class="preview-container">
-            <h2>已選擇檔案預覽</h2>
-            <div id="selectedPreviews"></div>
-        </div>
-
-        <div id="uploadedFilesDisplay" class="uploaded-files-display">
+        <div id="uploadedFilesDisplay" class="uploaded-files-display", style="display: none;">
             <h2>已上傳檔案</h2>
             <div id="uploadedPreviews"></div> </div>
 
-        <div class="inference-section">
+        <div id="inferSection" class="inference-section" style="display: none;">
             <button id="inferBtn" disabled>開始推理</button>
             <button id="interruptInferBtn" disabled>中斷推理</button> 
             <div id="inferenceStatus" class="status-message"></div>

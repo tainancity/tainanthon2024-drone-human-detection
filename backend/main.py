@@ -330,8 +330,8 @@ def writer_thread(result_queue, output_video, draw, total_frames, progress_bar, 
         # Optionally update UI here, but not every frame
         current_frame += 1
         progress = current_frame / total_frames
-        #progress_bar.progress(progress, text=("%.2f" % round(100*current_frame/total_frames, 2) + "%"))  # Update progress bar
-        print(f"Progress: {current_frame} / {total_frames}")
+        # progress_bar.progress(progress, text=("%.2f" % round(100*current_frame/total_frames, 2) + "%"))  # Update progress bar
+        # print(f"Progress: {current_frame} / {total_frames}")
         frame_display = cv2.resize(detect_frame, preview_size, interpolation=cv2.INTER_LINEAR)
         frame_rgb = cv2.cvtColor(frame_display, cv2.COLOR_BGR2RGB)
         ui_queue.put((frame_rgb, progress, current_frame))

@@ -5,11 +5,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const fileSelectionStatus = document.getElementById('fileSelectionStatus');
 
-    const selectedPreviewsContainer = document.getElementById('selectedPreviewsContainer');
-    const selectedPreviews = document.getElementById('selectedPreviews');
-
     const uploadedFilesDisplay = document.getElementById('uploadedFilesDisplay');
     const uploadedPreviews = document.getElementById('uploadedPreviews');
+
+    const inferSection = document.getElementById('inferSection');
 
     const inferBtn = document.getElementById('inferBtn');
     const inferenceStatus = document.getElementById('inferenceStatus');
@@ -189,7 +188,6 @@ document.addEventListener('DOMContentLoaded', () => {
         inferenceResults.innerHTML = '';
         inferenceStatus.innerHTML = '';
         uploadedPreviews.innerHTML = '';
-        selectedPreviews.innerHTML = '';
         fileSelectionStatus.textContent = '';
 
         uploadedFilesInfo = [];
@@ -198,13 +196,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const files = event.target.files;
         if (files.length === 0) {
             displayStatus(fileSelectionStatus, '請選擇檔案...', 'info');
-            selectedPreviewsContainer.style.display = 'none';
             return;
         }
 
         let fileNames = Array.from(files).map(file => file.name).join(', ');
         displayStatus(fileSelectionStatus, `已選擇檔案: ${fileNames}`, 'info');
-        selectedPreviewsContainer.style.display = 'block';
 
         for (let i = 0; i < files.length; i++) {
             const file = files[i];
@@ -230,7 +226,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 } else {
                     itemDiv.innerHTML += `<p>不支持的預覽類型: ${file.name}</p>`;
                 }
-                selectedPreviews.appendChild(itemDiv);
             };
             reader.readAsDataURL(file);
         }
@@ -245,8 +240,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
         displayStatus(uploadStatus, '檔案上傳中，請稍候...', 'info');
         uploadedPreviews.innerHTML = '';
-        selectedPreviews.innerHTML = '';
-        selectedPreviewsContainer.style.display = 'none';
 
         const formData = new FormData();
         for (let i = 0; i < files.length; i++) {
@@ -263,6 +256,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if (data.success) {
                 uploadedFilesInfo = data.results;
                 displayStatus(uploadStatus, '檔案上傳完成！', 'success');
+                uploadedFilesDisplay.style.display = 'block';
+                inferSection.style.display = 'block';
 
                 uploadedFilesInfo.forEach(file => {
                     const itemDiv = document.createElement('div');
@@ -351,12 +346,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 displayStatus(cleanupStatus, data.message, 'success');
                 uploadedFilesInfo = [];
                 fileSelectionStatus.textContent = '請選擇檔案...';
-                selectedPreviews.innerHTML = '';
-                selectedPreviewsContainer.style.display = 'none';
                 uploadedPreviews.innerHTML = '';
                 inferenceResults.innerHTML = '';
                 inferenceStatus.innerHTML = '';
                 uploadStatus.innerHTML = '';
+                uploadedFilesDisplay.style.display = 'none';
+                inferSection.style.display = 'none';
                 downloadOutputZipBtn.disabled = true;
                 downloadLogZipBtn.disabled = true;
                 fileInput.value = '';
@@ -374,7 +369,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     interruptBtn.disabled = true; // 預設禁用中斷按鈕
     displayStatus(fileSelectionStatus, '請選擇檔案...', 'info');
-    selectedPreviewsContainer.style.display = 'none';
 
     // 頁面載入時初始化 Socket.IO
     initSocketIO();
