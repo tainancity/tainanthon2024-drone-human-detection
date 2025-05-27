@@ -462,7 +462,7 @@ def infer(args, model, name, format):
             st.image(detect_frame, channels="BGR")
             end_time = time.time()
             elapsed_time = end_time - start_time
-            st.info(lang.get("inference_time").format(elapsed_time=round(elapsed_time, 2)))
+            st.info(lang.get("inference_time").format(infer_time=round(elapsed_time, 2)))
 
         # close all the windows
         # cv2.destroyAllWindows()

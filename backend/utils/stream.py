@@ -70,13 +70,13 @@ def stream(lang):
     )
     #cap = cv2.VideoCapture(gstreamer_str, cv2.CAP_GSTREAMER)
     
+    args = InitArgs(imfile=None, video=False, outputdir=None, device=device)
+    model = initModel(args)
     cap = ffmpegcv.VideoCaptureStreamRT(stream_url, codec="h264", gpu=0)
     width = cap.width
     height = cap.height
     preview_size = (800, height * 800 // width)
     orig_size = torch.tensor([width, height])[None].to(args.device)
-    args = InitArgs(imfile=None, video=False, outputdir=None, device=device)
-    model = initModel(args)
 
     if not cap.isOpened():
         st.error(lang.get("fail_open_rtmp"))
