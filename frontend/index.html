@@ -8,7 +8,7 @@
 </head>
 <body>
     <div class="container">
-        <h1>AI 模型偵測系統</h1>
+        <h1 id="easterEggTrigger" style="cursor: pointer;">AI 模型偵測系統</h1>
 
         <div class="upload-section">
             <label for="fileInput" class="upload-button">選擇檔案</label>
@@ -48,6 +48,12 @@
             <button id="cleanupBtn">清除所有檔案</button>
             <div id="cleanupStatus" class="status-message"></div>
         </div>
+    </div>
+
+    <dev id="easterEgg" class="easter-egg" style="display: none;">
+        <iframe width="420" height="315"
+        src="https://youtu.be/embed/yndqbqysdVE?t=178" allow="autoplay">
+        </iframe>
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.0/socket.io.min.js"></script>

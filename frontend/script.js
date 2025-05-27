@@ -31,6 +31,25 @@ document.addEventListener('DOMContentLoaded', () => {
     liveInferenceImage.alt = 'Live Inference';
     inferenceProgressBarContainer.appendChild(liveInferenceImage);
 
+    const easterEggTrigger = document.getElementById('easterEggTrigger');
+    const easterEggDiv = document.getElementById('easterEgg');
+    const youtubeIframe = easterEggDiv.querySelector('iframe');
+
+    if (easterEggTrigger && easterEggDiv && youtubeIframe) {
+        easterEggTrigger.addEventListener('click', () => {
+            // Toggle the display of the easter egg div
+            if (easterEggDiv.style.display === 'none') {
+                easterEggDiv.style.display = 'block';
+                // Set the YouTube video URL when showing
+                youtubeIframe.src = "https://www.youtube.com/embed/dQ_d_VKrFgM?autoplay=1&controls=0"; // This is a common Rickroll URL, replace with your desired video
+            } else {
+                easterEggDiv.style.display = 'none';
+                // Stop the video when hiding by clearing the src
+                youtubeIframe.src = "";
+            }
+        });
+    }
+
     let uploadedFilesInfo = [];
     let socket; // 聲明 socket 變數
 
