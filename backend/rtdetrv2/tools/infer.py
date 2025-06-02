@@ -122,7 +122,7 @@ def draw(images, labels, boxes, scores, thrh=0.6, path=""):
             pt2 = (int(b[2]), int(b[3]))
             cv2.rectangle(img, pt1, pt2, (0, 0, 255), 2)
             # Draw label and score
-            label_text = f"human: {lab[j].item()} {round(scrs[j].item(),2)}"
+            label_text = f"human: {round(scrs[j].item(),2)}"
             cv2.putText(img, label_text, (pt1[0], pt1[1] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0), 2)
         return img, box_count
 def initModel(args):
