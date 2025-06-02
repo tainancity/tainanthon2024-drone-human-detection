@@ -43,7 +43,8 @@ We present a Real-Time, Offline Drone-Based Visual Recognition system for Search
 
 1.  Run the streamlit application 
     ```bash
-    streamlit run backend/main.py --server.maxUploadSize 10000
+    cd backend/
+    streamlit run main.py --server.maxUploadSize 10000
     ```
 2. Open the application in your browser `http://localhost:8501`(if it doesn't open automatically)
 3. Follow onscreen instructions to upload files or activate real-time streaming.
