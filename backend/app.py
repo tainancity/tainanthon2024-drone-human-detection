@@ -19,23 +19,25 @@ import zipfile
 import time
 import sys
 
-# 假設 rtdetrv2 和 utils 在 sys.path 中，或者您需要根據實際路徑調整
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'rtdetrv2'))
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'utils'))
 
 from rtdetrv2.tools.infer import InitArgs, draw, initModel
 
+'''
+    initialize Flask app and SocketIO
+'''
 app = Flask(__name__)
 CORS(app) 
 
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet') # 設置 CORS 允許所有來源
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet') # enable CORS for all origins
 
 app.config['UPLOAD_FOLDER'] = 'inputFile'
 app.config['OUTPUT_FOLDER'] = 'outputFile'
 app.config['LOG_FOLDER'] = 'log'
 app.config['MAX_CONTENT_LENGTH'] = 1000 * 1024 * 1024  # 16 MB max upload size
 
-# 確保資料夾存在
+# ensure directories exist
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 os.makedirs(app.config['OUTPUT_FOLDER'], exist_ok=True)
 os.makedirs(app.config['LOG_FOLDER'], exist_ok=True)
@@ -44,7 +46,6 @@ frame_queue = queue.Queue(maxsize=10)
 result_queue = queue.Queue(maxsize=10)
 ui_queue = queue.Queue(maxsize=3)
 
-# 新增：用於提供已上傳的原始檔案 (inputFile)
 @app.route('/static_input/<path:filename>')
 def serve_input_file(filename):
     return send_file(os.path.join(app.config['UPLOAD_FOLDER'], filename))
@@ -55,18 +56,17 @@ def serve_output_file(filename):
 
 print(f"DEBUG: Flask App Current Working Directory: {os.getcwd()}")
 
-# 模擬 session_state，在真實生產環境應使用更持久的儲存（如資料庫）
 uploaded_files_info = {} # key: original_filename, value: {'uuid_name': ..., 'file_type': ...}
 name_mapping_table = [] # (original_name, uuid_name)
 detect_annotations = {} # key: uuid_name, value: list of detected frames/info
 
-# key: session ID (sid), value: True (表示請求中斷) 或 False
+# key: session ID (sid), value: True (request interrupt) 或 False
 interrupt_requests = {} 
 
 video_format = ['mp4', 'mov', 'avi', 'MP4', 'MOV', 'AVI']
 image_format = ['png', 'jpg', 'jpeg', 'PNG', 'JPG', 'JPEG']
 
-# 載入語言檔 (可選擇性保留，或將訊息直接硬編碼在前端)
+# load language file
 def load_language(lang_code):
     try:
         with open(f"lang/{lang_code}.json", "r", encoding="utf-8") as f:
@@ -74,11 +74,12 @@ def load_language(lang_code):
     except FileNotFoundError:
         return {} # Fallback to empty dict or default English
 
-# 假設語言預設為英文
+# default language: english
 lang = load_language("en")
 
-# --- 輔助函數 (從 main.py 提取並修改) ---
-
+'''
+    Supporting functions
+'''
 def find_uuid_name(name, mapping_table):
     for old_name, new_name in mapping_table:
         if name == old_name:
@@ -183,16 +184,16 @@ def writer_thread(result_queue, output_video, draw, total_frames, frame_placehol
 
         ui_queue.put((encoded_image, progress, current_frame))
 
-# --- 模型推斷邏輯 (從 main.py 的 infer 函數提取並修改) ---
+# inference logics
 def perform_inference(sid, file_path, is_video, output_base_dir, uuid_name):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
-    # 根據是否為影片，調整 output_path
-    if is_video:
+    # depending on the file type, create the output directory
+    if is_video: # vedios
         output_dir_for_file = os.path.join(output_base_dir, uuid_name.split('.')[0])
         os.makedirs(output_dir_for_file, exist_ok=True)
         args = InitArgs(file_path, True, output_dir_for_file, device)
-    else: # 圖片
+    else: # images
         output_dir_for_file = os.path.join(output_base_dir, "photo")
         os.makedirs(output_dir_for_file, exist_ok=True)
         args = InitArgs(file_path, False, output_dir_for_file, device)
@@ -214,7 +215,7 @@ def perform_inference(sid, file_path, is_video, output_base_dir, uuid_name):
         orig_size = torch.tensor([width, height])[None].to(args.device)
         preview_size = (800, height * 800 // width)
         
-        # 輸出影片的暫存路徑
+        # temp path for the output video
         output_video_path = os.path.join(output_dir_for_file, uuid_name)
         fourcc = cv2.VideoWriter_fourcc(*'avc1') 
         output_video = cv2.VideoWriter(output_video_path, fourcc, fps, (width, height))
@@ -277,9 +278,9 @@ def perform_inference(sid, file_path, is_video, output_base_dir, uuid_name):
         socketio.emit('inference_progress', {'progress': 100, 'filename': uuid_name}, room=sid)
         eventlet.sleep(0)
 
-        return detect_annotation, output_image_path, None, 1 # 對於圖片，總幀數設為 1
+        return detect_annotation, output_image_path, None, 1 # for images, total_frames is 1
 
-# --- Flask API 接口 ---
+# --- Flask API port ---
 
 @app.route('/')
 def home():
@@ -318,7 +319,7 @@ def upload_file():
         
         if is_video:
             input_dir = os.path.join(app.config['UPLOAD_FOLDER'], uuid_name.split('.')[0])
-        else: # 圖片
+        else: # images
             input_dir = os.path.join(app.config['UPLOAD_FOLDER'], "photo")
         
         os.makedirs(input_dir, exist_ok=True)
@@ -330,7 +331,7 @@ def upload_file():
                 'original_name': file_name,
                 'path': save_path,
                 'is_video': is_video,
-                'uuid_name': uuid_name # 將 uuid_name 也傳給前端，方便構建 URL
+                'uuid_name': uuid_name # pass uuid to front end for future reference
             }
             uploaded_results.append({
                 "original_name": file_name,
@@ -361,9 +362,9 @@ def test_disconnect():
 def handle_interrupt_inference():
     sid = request.sid
     print(f"Client {sid} requested interruption.")
-    interrupt_requests[sid] = True # 設置中斷標誌
+    interrupt_requests[sid] = True # interrupt the inference process for this client
 
-@socketio.on('start_inference_batch') # 接收前端發送的批次推理請求
+@socketio.on('start_inference_batch')
 def handle_start_inference_batch():
     global uploaded_files_info, detect_annotations, name_mapping_table
     
@@ -376,10 +377,9 @@ def handle_start_inference_batch():
 
     inference_results = []
     
-    # 這裡使用 list(uploaded_files_info.items()) 複製一份，防止在迭代時被修改
     files_to_infer = list(uploaded_files_info.items()) 
     
-    # 發送批次推理開始事件
+    # start inference event for batch
     socketio.emit('batch_inference_started', {'total_files': len(files_to_infer)}, room=sid)
 
     for i, (uuid_name, file_info) in enumerate(files_to_infer):
@@ -387,7 +387,7 @@ def handle_start_inference_batch():
         file_path = file_info['path']
         is_video = file_info['is_video']
         
-        # 發送當前檔案的推理開始事件
+        # strat inference event for each file
         socketio.emit('file_inference_started', {'filename': original_name, 'index': i}, room=sid)
 
         if uuid_name in detect_annotations and detect_annotations[uuid_name] is not None:
@@ -407,16 +407,15 @@ def handle_start_inference_batch():
                 "message": f"File '{original_name}' already inferred.",
                 "output_path_relative": relative_output_path_for_frontend,
                 "log_path": log_path,
-                "index": i # 添加索引方便前端對應
+                "index": i 
             }
             inference_results.append(result_data)
-            # 對於已推斷過的檔案，直接發送進度 100% 和完成事件
+            # for those already inferred, we still need to send progress 100% to the front end
             socketio.emit('inference_progress', {'progress': 100, 'filename': uuid_name}, room=sid)
             socketio.emit('file_inference_completed', result_data, room=sid)
             continue
 
         start_time = time.time()
-        # perform_inference 現在需要 sid 來發送進度更新
         annotations, output_file_absolute_path, error_msg, total_frame = perform_inference(
             sid, file_path, is_video, app.config['OUTPUT_FOLDER'], uuid_name
         )
@@ -426,25 +425,24 @@ def handle_start_inference_batch():
             result_data = {
                 "original_name": original_name,
                 "uuid_name": uuid_name,
-                "success": False, # 中斷也算不成功完成
+                "success": False, # interrupted inference is considered a failure
                 "message": f"Inference was interrupted for '{original_name}'.",
                 "index": i
             }
             inference_results.append(result_data)
-            # 發送給前端，讓前端知道這個文件被中斷了
             socketio.emit('file_inference_interrupted', result_data, room=sid) 
-            # 如果是中斷，則跳出整個批次推理迴圈
             break 
+
         elif error_msg:
             result_data = {
                 "original_name": original_name,
                 "uuid_name": uuid_name,
                 "success": False,
                 "message": f"Inference failed for '{original_name}': {error_msg}",
-                "index": i # 添加索引方便前端對應
+                "index": i 
             }
             inference_results.append(result_data)
-            socketio.emit('inference_error', result_data, room=sid) # 發送錯誤事件
+            socketio.emit('inference_error', result_data, room=sid) # send error event
         else:
             detect_annotations[uuid_name] = annotations
 
@@ -467,12 +465,12 @@ def handle_start_inference_batch():
                 "message": f"Inference completed for '{original_name}' in {end_time - start_time:.2f}s. FPS:{total_frame/(end_time - start_time):.2f}",
                 "output_path_relative": relative_output_path_for_frontend,
                 "log_path": log_path,
-                "index": i # 添加索引方便前端對應
+                "index": i 
             }
             inference_results.append(result_data)
-            socketio.emit('file_inference_completed', result_data, room=sid) # 發送單個檔案完成事件
+            socketio.emit('file_inference_completed', result_data, room=sid) # complete event for each file
     
-    socketio.emit('batch_inference_completed', {'results': inference_results}, room=sid) # 發送批次推理完成事件
+    socketio.emit('batch_inference_completed', {'results': inference_results}, room=sid) # complete event for batch
 
 @app.route('/download_output_zip')
 def download_output_zip():
@@ -503,18 +501,17 @@ def cleanup_files():
         shutil.rmtree(app.config['UPLOAD_FOLDER'], ignore_errors=True)
         shutil.rmtree(app.config['OUTPUT_FOLDER'], ignore_errors=True)
         shutil.rmtree(app.config['LOG_FOLDER'], ignore_errors=True)
-        # 重新創建空資料夾
         os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
         os.makedirs(app.config['OUTPUT_FOLDER'], exist_ok=True)
         os.makedirs(app.config['LOG_FOLDER'], exist_ok=True)
         
-        # 刪除壓縮檔
+        # delete any existing zip files
         if os.path.exists("output_files.zip"):
             os.remove("output_files.zip")
         if os.path.exists("log_files.zip"):
             os.remove("log_files.zip")
 
-        # 重置後端狀態
+        # reset backend state
         uploaded_files_info = {}
         name_mapping_table = []
         detect_annotations = {}
@@ -525,4 +522,4 @@ def cleanup_files():
 
 if __name__ == '__main__':
     print(f"DEBUG: Flask App Current Working Directory: {os.getcwd()}")
-    socketio.run(app, debug=True, port=5000, allow_unsafe_werkzeug=True) # allow_unsafe_werkzeug 僅用於開發環境
+    socketio.run(app, debug=True, port=5000, allow_unsafe_werkzeug=True) # allow_unsafe_werkzeug only for development purposes

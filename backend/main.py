@@ -41,7 +41,7 @@ def main():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     Video_Type = []
     if uploaded_files is not None:
-        # 重置 session state 變數
+        # reset session state variables
         if 'last_uploaded_files' not in st.session_state:
             st.session_state.last_uploaded_files = []
         if 'detect_annotations' not in st.session_state:
@@ -63,7 +63,7 @@ def main():
             
             # classify the input file is video or image
             if file_extension in video_format:
-                Video_Type.append(True)     # 代表輸入類型為影片檔
+                Video_Type.append(True)     # inputs video type
             elif file_extension in image_format:
                 Video_Type.append(False)
             else:
@@ -90,15 +90,15 @@ def main():
                 continue
             uuid_name, name_mapping_table = change_name_to_uuid(file_name, name_mapping_table)
 
-            if Video_Type[-1]:  # 影片檔
+            if Video_Type[-1]:  # videos
                 input_dir = os.path.join("inputFile", uuid_name.split('.')[0])
-            else:  # 圖片檔
+            else:  # images
                 input_dir = os.path.join("inputFile", "photo")
             output_dir = os.path.join("outputFile", uuid_name.split('.')[0])
             
             try:
                 os.makedirs(input_dir, exist_ok=True)
-                if Video_Type[-1]:  # 圖片需要輸出目錄
+                if Video_Type[-1]:  # images need output directory
                     os.makedirs(output_dir, exist_ok=True)
             except Exception as e:
                 st.error(lang.get("dir_creation_failed").format(e=e))
@@ -119,7 +119,7 @@ def main():
             save_success = st.success(lang.get("file_saved").format(save_path=save_path))
             save_success.empty()
         
-        # 顯示「開始推理」按鈕
+        # show staert inference button
         if st.session_state.infer_correct == False and st.session_state.last_uploaded_files != []:
             st.session_state.infer_correct = st.button(lang.get("infer_button"))
 
@@ -153,17 +153,17 @@ def main():
                 st.video(file_name)
 
         if st.session_state.has_infer_result:
-            # 提供下載壓縮檔案的按鈕
+            # download zipped output files
             zip_path = zip_output_files()
             with open(zip_path, "rb") as f:
                 st.download_button(lang.get("download_zip"), f, 'output_files.zip')
             
-            # 提供下載log檔案的按鈕
+            # download zipped log files
             log_zip_path = zip_log_files()
             with open(log_zip_path, "rb") as f:
                 st.download_button(lang.get("download_log"), f, 'log_files.zip')
 
-            # 清理掉臨時檔案
+            # cleanup temp files 
     st.button(lang.get("cleanup_button"), on_click=lambda: cleanup_files())
 
 #

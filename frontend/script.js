@@ -25,9 +25,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const currentFileInference = document.getElementById('currentFileInference');
 
     const liveInferenceImage = document.createElement('img');
-    liveInferenceImage.style.maxWidth = '100%'; // 限制預覽圖大小
+    liveInferenceImage.style.maxWidth = '100%'; // limit width to container
     liveInferenceImage.style.height = 'auto';
-    liveInferenceImage.style.display = 'none'; // 初始隱藏
+    liveInferenceImage.style.display = 'none'; // not displayed initially
     liveInferenceImage.alt = 'Live Inference';
     inferenceProgressBarContainer.appendChild(liveInferenceImage);
 
@@ -37,24 +37,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (easterEggTrigger && easterEggDiv && youtubeIframe) {
         easterEggTrigger.addEventListener('click', () => {
-            // Toggle the display of the easter egg div
             if (easterEggDiv.style.display === 'none') {
                 easterEggDiv.style.display = 'block';
-                // Set the YouTube video URL when showing
-                youtubeIframe.src = "https://www.youtube.com/embed/dQ_d_VKrFgM?autoplay=1&controls=0"; // This is a common Rickroll URL, replace with your desired video
+                youtubeIframe.src = "https://www.youtube.com/embed/dQ_d_VKrFgM?autoplay=1&controls=0";
             } else {
                 easterEggDiv.style.display = 'none';
-                // Stop the video when hiding by clearing the src
                 youtubeIframe.src = "";
             }
         });
     }
 
     let uploadedFilesInfo = [];
-    let socket; // 聲明 socket 變數
+    let socket;
 
     function initSocketIO() {
-        // 確保連接到您的 Flask SocketIO 伺服器
         socket = io('http://127.0.0.1:5000'); 
 
         socket.on('connect', () => {
@@ -72,51 +68,50 @@ document.addEventListener('DOMContentLoaded', () => {
             displayStatus(inferenceStatus, `連接伺服器失敗: ${error.message}`, 'error');
         });
 
-        // 監聽進度更新事件
+        // listen for inference progress updates
         socket.on('inference_progress', (data) => {
             console.log('Progress:', data.progress, 'Filename:', data.filename);
             const progress = data.progress;
-            const filename = data.filename; // 這裡的 filename 是 UUID 名稱
-            const imageData = data.frame; // 這裡假設後端傳回 base64 編碼的圖像數據
+            const filename = data.filename; //  UUID 
+            const imageData = data.frame; // base64 encoded image data
             
-            // 找到原始檔名以便顯示
+            // find the original file name from uploadedFilesInfo
             const originalFile = uploadedFilesInfo.find(f => f.uuid_name === filename);
             const originalFileName = originalFile ? originalFile.original_name : filename;
 
             inferenceProgressBar.style.width = `${progress}%`;
             inferenceProgressText.textContent = `${progress}%`;
             currentFileInference.textContent = `正在推理: ${originalFileName} (${progress}%)`;
-            inferenceProgressBarContainer.style.display = 'block'; // 顯示進度條
+            inferenceProgressBarContainer.style.display = 'block'; // progress bar container should be visible
 
-            // 如果進度是 100%，暫時將進度條文本顏色變為黑色，表示完成
             if (progress === 100) {
                 inferenceProgressText.style.color = '#333'; 
-                liveInferenceImage.style.display = 'none'; // 隱藏預覽圖
+                liveInferenceImage.style.display = 'none';
             } else {
-                inferenceProgressText.style.color = 'white'; // 保持進度文本在填充區塊為白色
+                inferenceProgressText.style.color = 'white';
                 if (imageData) {
                     liveInferenceImage.src = `data:image/jpeg;base64,${imageData}`;
                     liveInferenceImage.style.display = 'block';
                 } else {
-                    liveInferenceImage.style.display = 'none'; // 如果沒有圖像數據，則隱藏
+                    liveInferenceImage.style.display = 'none';
                 }
             }
         });
 
-        // 監聽批次推理開始事件
+        // listen for batch inference started event
         socket.on('batch_inference_started', (data) => {
             displayStatus(inferenceStatus, `開始推理 ${data.total_files} 個檔案...`, 'info');
-            // 重置進度條
+            // reset progress bar
             inferenceProgressBar.style.width = '0%';
             inferenceProgressText.textContent = '0%';
             currentFileInference.textContent = '';
             inferenceProgressBarContainer.style.display = 'block';
-            liveInferenceImage.style.display = 'none'; // 隱藏預覽圖
-            inferBtn.disabled = true; // 禁用推理按鈕
+            liveInferenceImage.style.display = 'none';
+            inferBtn.disabled = true;
             interruptBtn.disabled = false;
         });
 
-        // 監聽單個檔案推理開始事件
+        // listen for single file inference started event
         socket.on('file_inference_started', (data) => {
             displayStatus(inferenceStatus, `正在處理檔案 ${data.index + 1} / ${uploadedFilesInfo.length}: ${data.filename}...`, 'info');
             inferenceProgressBar.style.width = '0%';
@@ -124,50 +119,48 @@ document.addEventListener('DOMContentLoaded', () => {
             currentFileInference.textContent = `正在推理: ${data.filename} (0%)`;
         });
 
-        // 監聽單個檔案推理完成事件
+        // listen for file inference completed event
         socket.on('file_inference_completed', (result) => {
             // console.log('File inference completed:', result);
             displayStatus(inferenceStatus, `檔案 ${result.original_name} 推理完成！`, 'success');
-            // 將結果添加到頁面
+            // add result to the display
             addInferenceResultToDisplay(result);
         });
 
-        // 監聽批次推理完成事件
+        // listen for batch inference completed event
         socket.on('batch_inference_completed', (data) => {
             displayStatus(inferenceStatus, '所有檔案推理完成！', 'success');
-            inferenceProgressBarContainer.style.display = 'none'; // 隱藏進度條
-            liveInferenceImage.style.display = 'none'; // 隱藏預覽圖
+            inferenceProgressBarContainer.style.display = 'none';
+            liveInferenceImage.style.display = 'none';
             downloadOutputZipBtn.disabled = false;
             downloadLogZipBtn.disabled = false;
-            inferBtn.disabled = false; // 重新啟用推理按鈕
-            interruptBtn.disabled = true; // 禁用中斷按鈕
+            inferBtn.disabled = false;
+            interruptBtn.disabled = true;
             
         });
 
-        // 監聽錯誤事件
+        // listen for inference error event
         socket.on('inference_error', (error) => {
             console.error('Inference error from server:', error);
             displayStatus(inferenceStatus, `推理過程中發生錯誤: ${error.message}`, 'error');
-            inferenceProgressBarContainer.style.display = 'none'; // 隱藏進度條
-            liveInferenceImage.style.display = 'none'; // 隱藏預覽圖
-            inferBtn.disabled = false; // 重新啟用推理按鈕
-            interruptBtn.disabled = true; // 禁用中斷按鈕
+            inferenceProgressBarContainer.style.display = 'none';
+            liveInferenceImage.style.display = 'none';
+            inferBtn.disabled = false;
+            interruptBtn.disabled = true;
         });
 
-        // 監聽中斷事件
+        // listen for inference interrupted event
         socket.on('inference_interrupted', (data) => {
             console.log('Inference interrupted:', data);
             displayStatus(inferenceStatus, `推理已中斷: ${data.message}`, 'info');
-            inferenceProgressBarContainer.style.display = 'none'; // 隱藏進度條
-            liveInferenceImage.style.display = 'none'; // 隱藏預覽圖
-            inferBtn.disabled = false; // 重新啟用開始推理按鈕
-            interruptBtn.disabled = true; // 禁用中斷按鈕
-            // 可選：為被中斷的檔案顯示特定的消息
-            // addInferenceResultToDisplay(data); // 如果後端傳遞了足夠的數據
+            inferenceProgressBarContainer.style.display = 'none';
+            liveInferenceImage.style.display = 'none';
+            inferBtn.disabled = false;
+            interruptBtn.disabled = true;
         });
     }
 
-    // 將顯示推理結果的邏輯獨立出來
+    // display inference result in the results section
     function addInferenceResultToDisplay(result) {
         const itemDiv = document.createElement('div');
         itemDiv.className = 'inference-item';
@@ -303,9 +296,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     itemDiv.innerHTML = `<h4>${file.original_name}</h4>`;
 
                     if (file.success) {
-                        // 構建後端提供原始檔案的 URL
                         const staticInputUrl = `http://127.0.0.1:5000/static_input/`;
-                        // 注意：這裡假設 file.uuid_name 已經包含副檔名
+                        // assume file.uuid_name include file extension
                         const relativePath = file.is_video ? `${file.uuid_name.split('.')[0]}/${file.uuid_name}` : `photo/${file.uuid_name}`;
                         const displayPath = staticInputUrl + relativePath;
 
@@ -348,21 +340,21 @@ document.addEventListener('DOMContentLoaded', () => {
             displayStatus(inferenceStatus, '請先上傳檔案。', 'error');
             return;
         }
-        // 清空之前的結果
+        // clean up previous results
         inferenceResults.innerHTML = '';
-        inferBtn.disabled = true; // 禁用推理按鈕
-        interruptBtn.disabled = false; // 啟用中斷按鈕
+        inferBtn.disabled = true;
+        interruptBtn.disabled = false;
         downloadOutputZipBtn.disabled = true;
         downloadLogZipBtn.disabled = true;
         
-        // 透過 SocketIO 發送啟動批次推理的事件
+        // send start inference event
         socket.emit('start_inference_batch');
     });
 
      interruptBtn.addEventListener('click', () => {
         displayStatus(inferenceStatus, '正在發送中斷請求...', 'info');
-        interruptBtn.disabled = true; // 發送請求後先禁用按鈕
-        socket.emit('interrupt_inference'); // 發送中斷事件
+        interruptBtn.disabled = true;
+        socket.emit('interrupt_inference');
     });
 
     downloadOutputZipBtn.addEventListener('click', () => {
@@ -390,12 +382,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 uploadStatus.innerHTML = '';
                 uploadedFilesDisplay.style.display = 'none';
                 inferSection.style.display = 'none';
-                liveInferenceImage.style.display = 'none'; // 隱藏預覽圖
+                liveInferenceImage.style.display = 'none';
                 downloadOutputZipBtn.disabled = true;
                 downloadLogZipBtn.disabled = true;
                 fileInput.value = '';
-                inferBtn.disabled = true;
-                // 隱藏進度條
+                inferBtn.disabled = true;              
                 inferenceProgressBarContainer.style.display = 'none';
             } else {
                 displayStatus(cleanupStatus, `清除失敗: ${data.message}`, 'error');
@@ -406,9 +397,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    interruptBtn.disabled = true; // 預設禁用中斷按鈕
+    interruptBtn.disabled = true; // deisable interrupt button initially
     displayStatus(fileSelectionStatus, '請選擇檔案...', 'info');
 
-    // 頁面載入時初始化 Socket.IO
     initSocketIO();
 });
