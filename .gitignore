@@ -128,17 +128,12 @@ dmypy.json
 cython_debug/
 
 # Custom
-source
-model
-rtdetr/weights/
-trained_model_pth
-log
-result
-log.txt
-inputFile
-outputFile
-outputZip
-torchTest.py
+datasets/
+weights/
+inputFile/
+outputFile/
 log_files.zip
 output_files.zip
-Drone_Detection.exe
+log/
+test/
+

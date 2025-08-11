@@ -6,3 +6,15 @@ pycocotools
 PyYAML
 scipy
 transformers
+yt-dlp
+flask
+flask-cors
+Flask-SocketIO 
+python-socketio
+eventlet
+ffmpegcv
+torch
+torchvision
+tensorboard
+faster_coco_eval
+ffmpeg
